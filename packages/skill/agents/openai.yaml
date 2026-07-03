@@ -1,0 +1,3 @@
+display_name: AgentPay
+short_description: Chat-approved cross-chain payments for AI agents.
+default_prompt: Use AgentPay to create an agent wallet, prepare a payment or guarded same-chain contract call, request exact approval, execute via MCP, and track status.

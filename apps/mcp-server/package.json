@@ -1,0 +1,42 @@
+{
+  "name": "@agentpay/mcp-server",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/index.ts",
+    "src/mcp/agentpay-mcp.ts",
+    "src/mcp/stdio.ts",
+    "src/runtime/agentpay-runtime.ts",
+    "src/services/chain-executor.ts",
+    "src/services/lifi.ts",
+    "src/services/supabase.ts",
+    "src/tools/account-admin.ts",
+    "src/tools/execute-payment.ts",
+    "src/tools/get-balance.ts",
+    "src/tools/invoice.ts",
+    "src/tools/payment-tracking.ts",
+    "src/tools/prepare-contract-call.ts",
+    "src/tools/prepare-payment.ts",
+    "src/tools/quote-payment-route.ts",
+    "src/tools/route-target-allowance.ts",
+    "src/tools/wallet-setup.ts",
+    "src/tools/x402.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentpay/shared": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "ethers": "^6.17.0"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@agentpay/setup-web",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/index.ts",
+    "src/runtime.ts",
+    "src/server.ts",
+    "src/services/account-deployer.ts",
+    "src/services/complete-wallet-setup.ts",
+    "src/start.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "tsx src/start.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentpay/mcp-server": "0.1.0",
+    "@agentpay/shared": "0.1.0",
+    "ethers": "^6.17.0"
+  }
+}

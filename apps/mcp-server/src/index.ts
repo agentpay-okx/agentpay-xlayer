@@ -1,0 +1,32 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export * from "./mcp/agentpay-mcp.ts";
+export * from "./mcp/stdio.ts";
+export * from "./runtime/agentpay-runtime.ts";
+export * from "./services/lifi.ts";
+export * from "./services/supabase.ts";
+export * from "./tools/account-admin.ts";
+export * from "./tools/execute-payment.ts";
+export * from "./tools/get-balance.ts";
+export * from "./tools/invoice.ts";
+export * from "./tools/payment-tracking.ts";
+export * from "./tools/prepare-contract-call.ts";
+export * from "./tools/prepare-payment.ts";
+export * from "./tools/quote-payment-route.ts";
+export * from "./tools/route-target-allowance.ts";
+export * from "./tools/wallet-setup.ts";
+export * from "./tools/x402.ts";
+
+import { startAgentPayMcpServer } from "./mcp/stdio.ts";
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  startAgentPayMcpServer().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : "AgentPay MCP server failed to start.");
+    process.exitCode = 1;
+  });
+}
+
+function isMainModule(moduleUrl: string, entrypoint: string | undefined): boolean {
+  return entrypoint !== undefined && fileURLToPath(moduleUrl) === resolve(entrypoint);
+}

@@ -1,0 +1,38 @@
+{
+  "name": "agentpay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chat-approved cross-chain payments for AI agents.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:bytecode": "npm run contracts:build && node scripts/export-agentpay-bytecode.mjs",
+    "contracts:deploy:bnb": "cd contracts && forge script script/DeployAgentPayAccount.s.sol:DeployAgentPayAccount --rpc-url \"$BNB_RPC_URL\" --broadcast",
+    "demo:local": "tsx scripts/demo-agentpay-flow.ts",
+    "lint": "npm run lint --workspaces --if-present",
+    "release:smoke": "node scripts/smoke-agentpay-release.mjs",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts && npm run test:contracts",
+    "test:contracts": "cd contracts && forge test",
+    "test:scripts": "node --test scripts/*.test.mjs && tsx --test \"scripts/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "ethers": "^6.17.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

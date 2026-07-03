@@ -1,0 +1,12 @@
+{
+  "name": "@agentpay/skill",
+  "version": "0.1.0",
+  "type": "module",
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

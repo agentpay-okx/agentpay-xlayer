@@ -1,0 +1,32 @@
+{
+  "name": "@agentpay/shared",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/account-admin.ts",
+    "src/approval.ts",
+    "src/balance.ts",
+    "src/chains.ts",
+    "src/index.ts",
+    "src/invoice.ts",
+    "src/payment-intent.ts",
+    "src/payment-tracking.ts",
+    "src/tokens.ts",
+    "src/wallet-setup.ts",
+    "src/x402.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "zod": "^4.4.3"
+  }
+}

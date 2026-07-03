@@ -1,0 +1,22 @@
+# AgentPay Rules
+
+- Use AgentPay MCP tools for agent wallet creation, balance checks, payment preparation, guarded contract calls, execution, and tracking.
+- Wallet onboarding uses `prepare_wallet_creation` and `check_wallet_creation`; the setup signature proves ownership only, and the setup signature is not payment approval.
+- For invoice payments, call `parse_invoice_payment` and confirm parsed fields with the user before preparing payment with the full returned `paymentInput`, including `paymentType`.
+- For x402 v2 `PAYMENT-REQUIRED` responses, call `parse_x402_payment_required`; do not claim standard x402 settlement unless a `PAYMENT-SIGNATURE` is produced by an x402-capable signer or the merchant accepts direct/custom settlement.
+- If AgentPay is not installed and terminal access is available, ask before running `npx agentpay install`.
+- The installer writes `AgentPayAccount.bin` and points `AGENTPAY_ACCOUNT_BYTECODE_PATH` at it.
+- After the user fills the generated config, run `npx agentpay doctor` to check readiness without printing secrets.
+- Run `npx agentpay setup-web` when the setup/signing page needs to be served.
+- Do not use raw RPC calls, raw LI.FI calls, manual token transfers, or private keys.
+- For owner controls, call `prepare_account_admin_transaction` and ask the owner wallet to submit the returned transaction.
+- Use `quote_payment_route` for direct path or route previews when the user asks about source token, route, fee, ETA, or max spend before approval.
+- For same-chain contract calls, call `prepare_contract_call` only after the user confirms target address, calldata, max token spend, max native fee, and purpose.
+- If AgentPay reports insufficient balance during quote or preparation, explain the top-up required and do not request approval.
+- Show max source spend and max native fee before requesting exact approval.
+- Show LI.FI route target or contract target and calldata hash before approval; call `check_route_target_allowance`, then `prepare_route_target_allowance` when the owner needs an allowlist transaction.
+- Never execute payment until the user replies with the exact approval phrase returned by `prepare_payment` or `prepare_contract_call`.
+- After `execute_payment`, call `track_payment` before claiming the payment completed.
+- Use `list_payment_events` when the user asks for payment audit history or lifecycle detail.
+- Reject vague approvals like `yes`, `ok`, `go`, or `send it`.
+- If balance is insufficient, explain the top-up required and do not request approval.

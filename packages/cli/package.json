@@ -1,0 +1,24 @@
+{
+  "name": "agentpay",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agentpay": "./dist/index.js"
+  },
+  "files": [
+    "assets/",
+    "dist/",
+    "src/index.ts",
+    "templates/"
+  ],
+  "scripts": {
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentpay/mcp-server": "0.1.0",
+    "@agentpay/skill": "0.1.0",
+    "@agentpay/setup-web": "0.1.0",
+    "tsx": "^4.22.5"
+  }
+}

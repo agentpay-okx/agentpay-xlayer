@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentpay": {
+      "command": "npx",
+      "args": ["-y", "agentpay", "mcp"],
+      "env": {
+        "AGENTPAY_CONFIG": "~/.agentpay/config.json"
+      }
+    }
+  }
+}
