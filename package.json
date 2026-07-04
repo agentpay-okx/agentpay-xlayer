@@ -12,7 +12,7 @@
     "build": "npm run build --workspaces --if-present",
     "contracts:build": "cd contracts && forge build",
     "contracts:bytecode": "npm run contracts:build && node scripts/export-agentpay-bytecode.mjs",
-    "contracts:deploy:bnb": "cd contracts && forge script script/DeployAgentPayAccount.s.sol:DeployAgentPayAccount --rpc-url \"$BNB_RPC_URL\" --broadcast",
+    "contracts:deploy:xlayer": "cd contracts && forge script script/DeployAgentPayAccount.s.sol:DeployAgentPayAccount --rpc-url \"$XLAYER_RPC_URL\" --broadcast",
     "demo:local": "tsx scripts/demo-agentpay-flow.ts",
     "lint": "npm run lint --workspaces --if-present",
     "release:smoke": "node scripts/smoke-agentpay-release.mjs",

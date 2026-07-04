@@ -3,6 +3,7 @@ import {
   getChainName,
   getNativeCurrency,
   getStableTokenMetadata,
+  resolveXLayerHomeChainId,
   type GetBalanceInput,
   type StableTokenSymbol,
 } from "@agentpay-ai/shared";
@@ -40,6 +41,7 @@ export interface GetBalanceDependencies {
   wallets: AgentWalletRepository;
   tokenBalances: TokenBalanceReader;
   nativeBalances: NativeBalanceReader;
+  homeChainId?: number;
 }
 
 export interface GetBalanceOutput {
@@ -64,7 +66,9 @@ export interface GetBalanceOutput {
 
 export async function getBalance(rawInput: GetBalanceInput, dependencies: GetBalanceDependencies): Promise<GetBalanceOutput> {
   const input = getBalanceInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet) {
     return {
@@ -131,8 +135,10 @@ export const getBalanceTool = {
       tokenSymbols: {
         type: "array",
         minItems: 1,
-        items: { type: "string", enum: ["USDC", "USDT"] },
+        items: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
       },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

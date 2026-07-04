@@ -46,6 +46,10 @@ describe("AgentPay Supabase migration", () => {
     for (const index of requiredIndexes) {
       assert.ok(sql.includes(index), index);
     }
+
+    assert.ok(sql.includes("home_chain_id integer not null default 196"), "X Layer home chain default");
+    assert.ok(sql.includes("home_chain_id integer not null default 196 check (home_chain_id in (196, 1952))"), "setup intent X Layer network default");
+    assert.ok(sql.includes("source_token_symbol text not null check (source_token_symbol in ('usdt0', 'usdc', 'usdt'))"));
   });
 
   it("includes an upgrade migration for payment intent direct tracking schema drift", async () => {
@@ -69,6 +73,8 @@ describe("AgentPay Supabase migration", () => {
       ),
       "payment type contract-call check",
     );
+    assert.ok(sql.includes("alter column home_chain_id set default 196"), "agent wallet home chain default upgrade");
+    assert.ok(sql.includes("add column if not exists home_chain_id integer not null default 196"), "setup intent home chain upgrade");
     assert.ok(sql.includes("notify pgrst, 'reload schema'"), "PostgREST schema cache reload");
   });
 });

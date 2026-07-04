@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "../src/AgentPayAccount.sol";
 import "../src/MockStablecoin.sol";
 
 interface MockStablecoinVm {
@@ -13,33 +12,24 @@ interface MockStablecoinVm {
 
 contract DeployMockStablecoins {
     address internal constant VM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
-    uint256 public constant MOCK_USDC_MINT_AMOUNT = 1_000 * 1e6;
-    uint256 public constant MOCK_USDT_MINT_AMOUNT = 1_000 * 1e18;
 
     MockStablecoinVm internal constant vm = MockStablecoinVm(VM_ADDRESS);
 
-    event MockStablecoinsDeployed(address indexed usdc, address indexed usdt, address indexed recipient);
+    event MockStablecoinsDeployed(address indexed usdt0, address indexed usdc, address indexed owner);
 
-    function run() external returns (MockStablecoin usdc, MockStablecoin usdt) {
+    function run() external returns (MockStablecoin usdt0, MockStablecoin usdc) {
         uint256 deployerPrivateKey = vm.envUint("SETUP_DEPLOYER_PRIVATE_KEY");
         address owner = vm.envAddress("AGENTPAY_OWNER_ADDRESS");
-        address account = vm.envAddress("AGENTPAY_ACCOUNT_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
-        (usdc, usdt) = deploy(owner, account);
+        (usdt0, usdc) = deploy(owner);
         vm.stopBroadcast();
     }
 
-    function deploy(address owner, address account) public returns (MockStablecoin usdc, MockStablecoin usdt) {
+    function deploy(address owner) public returns (MockStablecoin usdt0, MockStablecoin usdc) {
+        usdt0 = new MockStablecoin("Mock USDT0", "USDT0", 6, owner);
         usdc = new MockStablecoin("Mock USDC", "USDC", 6, owner);
-        usdt = new MockStablecoin("Mock USDT", "USDT", 18, owner);
 
-        usdc.mint(account, MOCK_USDC_MINT_AMOUNT);
-        usdt.mint(account, MOCK_USDT_MINT_AMOUNT);
-
-        AgentPayAccount(payable(account)).setAllowedToken(address(usdc), true);
-        AgentPayAccount(payable(account)).setAllowedToken(address(usdt), true);
-
-        emit MockStablecoinsDeployed(address(usdc), address(usdt), account);
+        emit MockStablecoinsDeployed(address(usdt0), address(usdc), owner);
     }
 }

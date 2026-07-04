@@ -50,7 +50,7 @@ describe("parseInvoicePayment", () => {
       destinationTokenSymbol: "USDT",
       amountOut: "25",
       purpose: "content license",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       paymentType: "INVOICE_PAYMENT",
     });
   });
@@ -60,7 +60,7 @@ describe("parseInvoicePayment", () => {
       invoice: [
         "Invoice ID: inv_789",
         "To: 0x1111111111111111111111111111111111111111",
-        "Chain ID: 56",
+        "Chain ID: 196",
         "Currency: USDC",
         "Amount Due: 3.25",
       ].join("\n"),

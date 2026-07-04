@@ -6,7 +6,11 @@ import {
   createSupabaseAgentPayRepositoriesFromConfig,
   type SupabaseRuntimeConfig,
 } from "@agentpay-ai/mcp-server";
-import type { SetupIntentRecord } from "@agentpay-ai/shared";
+import {
+  configureStableTokenMetadataOverrides,
+  type SetupIntentRecord,
+  type StableTokenMetadataOverrides,
+} from "@agentpay-ai/shared";
 
 import {
   createEthersAgentPayAccountDeployer,
@@ -24,21 +28,23 @@ import type { SetupWebDependencies } from "./server.ts";
 const requiredEnvNames = [
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "BNB_RPC_URL",
+  "XLAYER_RPC_URL",
   "SETUP_DEPLOYER_PRIVATE_KEY",
 ] as const;
 const privateKeyPattern = /^0x[a-fA-F0-9]{64}$/;
 const hexDataPattern = /^0x(?:[a-fA-F0-9]{2})+$/;
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
-const setupHomeChainIds = new Set([56, 97]);
+const setupHomeChainIds = new Set([196, 1952]);
 
 export interface SetupWebRuntimeConfig {
   supabaseUrl: string;
   serviceRoleKey: string;
-  bnbRpcUrl: string;
+  xlayerRpcUrl: string;
+  xlayerRpcUrls?: Partial<Record<number, string>>;
   setupDeployerPrivateKey: string;
   agentPayAccountBytecode: string;
   homeChainId?: number;
+  stableTokenOverrides?: StableTokenMetadataOverrides;
   initialAllowedRouteTargets?: string[];
   setupWebPort?: number;
 }
@@ -86,13 +92,21 @@ export function parseSetupWebEnv(env: NodeJS.ProcessEnv | Record<string, string 
   const bytecode = normalized.AGENTPAY_ACCOUNT_BYTECODE ?? readBytecode(normalized.AGENTPAY_ACCOUNT_BYTECODE_PATH);
   const initialAllowedRouteTargets = parseAddressList(normalized.AGENTPAY_INITIAL_ROUTE_TARGETS);
   const homeChainId = parseOptionalHomeChainId(normalized.AGENTPAY_HOME_CHAIN_ID);
+  const xlayerRpcUrls = parseXLayerRpcUrls(normalized);
+  const stableTokenOverrides = parseStableTokenOverrides(normalized);
   const missing = [
     ...requiredEnvNames.filter((name) => !normalized[name]),
     !bytecode ? "AGENTPAY_ACCOUNT_BYTECODE" : undefined,
   ].filter((name): name is string => Boolean(name));
   const invalid = [
     normalized.SUPABASE_URL && !isHttpUrl(normalized.SUPABASE_URL) ? "SUPABASE_URL" : undefined,
-    normalized.BNB_RPC_URL && !isHttpUrl(normalized.BNB_RPC_URL) ? "BNB_RPC_URL" : undefined,
+    normalized.XLAYER_RPC_URL && !isHttpUrl(normalized.XLAYER_RPC_URL) ? "XLAYER_RPC_URL" : undefined,
+    normalized.XLAYER_MAINNET_RPC_URL && !isHttpUrl(normalized.XLAYER_MAINNET_RPC_URL)
+      ? "XLAYER_MAINNET_RPC_URL"
+      : undefined,
+    normalized.XLAYER_TESTNET_RPC_URL && !isHttpUrl(normalized.XLAYER_TESTNET_RPC_URL)
+      ? "XLAYER_TESTNET_RPC_URL"
+      : undefined,
     normalized.SETUP_DEPLOYER_PRIVATE_KEY && !privateKeyPattern.test(normalized.SETUP_DEPLOYER_PRIVATE_KEY)
       ? "SETUP_DEPLOYER_PRIVATE_KEY"
       : undefined,
@@ -102,6 +116,7 @@ export function parseSetupWebEnv(env: NodeJS.ProcessEnv | Record<string, string 
       : undefined,
     normalized.AGENTPAY_HOME_CHAIN_ID && !homeChainId ? "AGENTPAY_HOME_CHAIN_ID" : undefined,
     normalized.SETUP_WEB_PORT && !isPort(normalized.SETUP_WEB_PORT) ? "SETUP_WEB_PORT" : undefined,
+    ...validateStableTokenOverrideAddresses(normalized),
   ].filter((name): name is string => Boolean(name));
 
   if (missing.length > 0 || invalid.length > 0) {
@@ -111,10 +126,12 @@ export function parseSetupWebEnv(env: NodeJS.ProcessEnv | Record<string, string 
   return omitUndefined({
     supabaseUrl: normalized.SUPABASE_URL,
     serviceRoleKey: normalized.SUPABASE_SERVICE_ROLE_KEY,
-    bnbRpcUrl: normalized.BNB_RPC_URL,
+    xlayerRpcUrl: normalized.XLAYER_RPC_URL,
+    xlayerRpcUrls,
     setupDeployerPrivateKey: normalized.SETUP_DEPLOYER_PRIVATE_KEY,
     agentPayAccountBytecode: bytecode,
     homeChainId,
+    stableTokenOverrides,
     initialAllowedRouteTargets: initialAllowedRouteTargets.length > 0 ? initialAllowedRouteTargets : undefined,
     setupWebPort: normalized.SETUP_WEB_PORT ? Number(normalized.SETUP_WEB_PORT) : undefined,
   }) as SetupWebRuntimeConfig;
@@ -124,6 +141,7 @@ export function createSetupWebDependencies(
   config: SetupWebRuntimeConfig,
   options: SetupWebRuntimeOptions = {},
 ): SetupWebDependencies {
+  configureStableTokenMetadataOverrides(config.stableTokenOverrides ?? {});
   const repositories = (options.createRepositories ?? createSupabaseAgentPayRepositoriesFromConfig)(
     omitUndefined({
       supabaseUrl: config.supabaseUrl,
@@ -132,7 +150,8 @@ export function createSetupWebDependencies(
     }) as SupabaseRuntimeConfig,
   );
   const deployer = (options.createDeployer ?? createEthersAgentPayAccountDeployer)({
-    rpcUrl: config.bnbRpcUrl,
+    rpcUrl: config.xlayerRpcUrl,
+    rpcUrls: config.xlayerRpcUrls,
     deployerPrivateKey: config.setupDeployerPrivateKey,
     bytecode: config.agentPayAccountBytecode,
   });
@@ -181,6 +200,65 @@ function parseOptionalHomeChainId(value: string | undefined): number | undefined
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && setupHomeChainIds.has(parsed) ? parsed : undefined;
+}
+
+function parseXLayerRpcUrls(env: Record<string, string | undefined>): Partial<Record<number, string>> | undefined {
+  const rpcUrls = omitUndefined({
+    196: env.XLAYER_MAINNET_RPC_URL,
+    1952: env.XLAYER_TESTNET_RPC_URL,
+  }) as Partial<Record<number, string>>;
+
+  return Object.keys(rpcUrls).length > 0 ? rpcUrls : undefined;
+}
+
+function parseStableTokenOverrides(env: Record<string, string | undefined>): StableTokenMetadataOverrides | undefined {
+  const xlayerOverrides = {
+    ...(env.AGENTPAY_XLAYER_USDT0_ADDRESS
+      ? {
+          USDT0: {
+            address: env.AGENTPAY_XLAYER_USDT0_ADDRESS,
+          },
+        }
+      : {}),
+    ...(env.AGENTPAY_XLAYER_USDC_ADDRESS
+      ? {
+          USDC: {
+            address: env.AGENTPAY_XLAYER_USDC_ADDRESS,
+          },
+        }
+      : {}),
+  };
+  const xlayerTestnetOverrides = {
+    ...(env.AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS
+      ? {
+          USDT0: {
+            address: env.AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS,
+          },
+        }
+      : {}),
+    ...(env.AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS
+      ? {
+          USDC: {
+            address: env.AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS,
+          },
+        }
+      : {}),
+  };
+  const overrides = omitUndefined({
+    196: Object.keys(xlayerOverrides).length > 0 ? xlayerOverrides : undefined,
+    1952: Object.keys(xlayerTestnetOverrides).length > 0 ? xlayerTestnetOverrides : undefined,
+  }) as StableTokenMetadataOverrides;
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function validateStableTokenOverrideAddresses(env: Record<string, string | undefined>): string[] {
+  return [
+    "AGENTPAY_XLAYER_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_USDC_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS",
+  ].filter((name) => env[name] && !addressPattern.test(env[name]));
 }
 
 function createConfigErrorMessage(missing: string[], invalid: string[]): string {

@@ -22,7 +22,7 @@ interface SupabaseListQueryResult<T> {
 
 interface SupabaseSelectQuery<T> extends PromiseLike<SupabaseListQueryResult<T>> {
   select(columns: string): SupabaseSelectQuery<T>;
-  eq(column: string, value: string): SupabaseSelectQuery<T>;
+  eq(column: string, value: string | number): SupabaseSelectQuery<T>;
   order(column: string, options: { ascending: boolean }): SupabaseSelectQuery<T>;
   limit(count: number): SupabaseSelectQuery<T>;
   maybeSingle(): Promise<SupabaseQueryResult<T>>;
@@ -115,6 +115,7 @@ interface SetupIntentRow {
   error_code: string | null;
   error_message: string | null;
   completed_at: string | null;
+  home_chain_id: number | null;
 }
 
 export interface SupabaseRuntimeConfig {
@@ -201,11 +202,17 @@ export function createSupabaseAgentPayRepositories(client: AgentPaySupabaseClien
       },
     },
     wallets: {
-      async getActiveWallet(): Promise<AgentWallet | null> {
-        const { data, error } = await client
+      async getActiveWallet(request = {}): Promise<AgentWallet | null> {
+        let query = client
           .from("agent_wallets")
           .select("owner_address, account_address, home_chain_id, executor_address, status")
-          .eq("status", "ACTIVE")
+          .eq("status", "ACTIVE");
+
+        if (request.homeChainId !== undefined) {
+          query = query.eq("home_chain_id", request.homeChainId);
+        }
+
+        const { data, error } = await query
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -373,6 +380,7 @@ function toSetupIntentRow(intent: SetupIntentRecord): Record<string, unknown> {
     error_code: intent.errorCode,
     error_message: intent.errorMessage,
     completed_at: intent.completedAt,
+    home_chain_id: intent.homeChainId,
   });
 }
 
@@ -389,6 +397,7 @@ function toSetupIntentRecord(row: SetupIntentRow): SetupIntentRecord {
     errorCode: row.error_code ?? undefined,
     errorMessage: row.error_message ?? undefined,
     completedAt: row.completed_at ?? undefined,
+    homeChainId: row.home_chain_id ?? undefined,
   };
 }
 

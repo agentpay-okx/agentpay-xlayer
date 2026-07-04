@@ -20,7 +20,7 @@ describe("checkRouteTargetAllowance", () => {
             return {
               ownerAddress: "0x2222222222222222222222222222222222222222",
               accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
+              homeChainId: 196,
               executorAddress: "0x4444444444444444444444444444444444444444",
               status: "ACTIVE",
             };
@@ -38,7 +38,7 @@ describe("checkRouteTargetAllowance", () => {
     assert.deepEqual(checks, [
       {
         accountAddress: "0x3333333333333333333333333333333333333333",
-        chainId: 56,
+        chainId: 196,
         routeTarget: "0x7777777777777777777777777777777777777777",
       },
     ]);
@@ -48,10 +48,10 @@ describe("checkRouteTargetAllowance", () => {
       routeTargetAllowed: true,
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       instructionToAgent:
-        "Route target 0x7777777777777777777777777777777777777777 is already allowlisted on BNB Chain.",
+        "Route target 0x7777777777777777777777777777777777777777 is already allowlisted on X Layer.",
     });
   });
 
@@ -95,7 +95,7 @@ describe("prepareRouteTargetAllowance", () => {
             return {
               ownerAddress: "0x2222222222222222222222222222222222222222",
               accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
+              homeChainId: 196,
               executorAddress: "0x4444444444444444444444444444444444444444",
               status: "ACTIVE",
             };
@@ -111,20 +111,20 @@ describe("prepareRouteTargetAllowance", () => {
       allowed: true,
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       transaction: {
         from: "0x2222222222222222222222222222222222222222",
         to: "0x3333333333333333333333333333333333333333",
         value: "0",
-        chainId: 56,
+        chainId: 196,
         data: accountInterface.encodeFunctionData("setAllowedRouteTarget", [
           "0x7777777777777777777777777777777777777777",
           true,
         ]),
       },
       instructionToAgent:
-        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on BNB Chain. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
+        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on X Layer. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
     });
   });
 
@@ -140,7 +140,7 @@ describe("prepareRouteTargetAllowance", () => {
             return {
               ownerAddress: "0x2222222222222222222222222222222222222222",
               accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
+              homeChainId: 196,
               executorAddress: "0x4444444444444444444444444444444444444444",
               status: "ACTIVE",
             };

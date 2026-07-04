@@ -5,6 +5,7 @@ import {
   formatNativeAmount,
   getChainName,
   isDirectPaymentRoute,
+  resolveXLayerHomeChainId,
   type PaymentIntentRecord,
   type PreparePaymentInput,
   preparePaymentInputSchema,
@@ -23,7 +24,7 @@ export interface AgentWallet {
 }
 
 export interface AgentWalletRepository {
-  getActiveWallet(): Promise<AgentWallet | null>;
+  getActiveWallet(request?: { homeChainId?: number }): Promise<AgentWallet | null>;
 }
 
 export interface RouteQuoteRequest {
@@ -54,6 +55,7 @@ export interface PreparePaymentDependencies {
   clock: () => Date;
   createId: () => string;
   createNonce: () => string;
+  homeChainId?: number;
   approvalTtlSeconds?: number;
 }
 
@@ -86,7 +88,9 @@ export async function preparePayment(
   dependencies: PreparePaymentDependencies,
 ): Promise<PreparePaymentOutput> {
   const input = preparePaymentInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet || wallet.status !== "ACTIVE") {
     throw new Error("No active AgentPay wallet is available.");
@@ -194,11 +198,13 @@ export const preparePaymentTool = {
     properties: {
       recipientAddress: { type: "string" },
       destinationChainId: { type: "number" },
-      destinationTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      destinationTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
       amountOut: { type: "string" },
       purpose: { type: "string" },
-      sourceTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      sourceTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
       paymentType: { type: "string", enum: ["WALLET_PAYMENT", "INVOICE_PAYMENT", "X402_PAYMENT"] },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

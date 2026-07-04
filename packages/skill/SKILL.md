@@ -5,7 +5,7 @@ description: Use AgentPay MCP tools when a user wants an AI agent to create an A
 
 # AgentPay
 
-AgentPay is an MCP payment plugin for chat-approved cross-chain payments from a BNB Chain smart account.
+AgentPay is an MCP payment plugin for chat-approved cross-chain payments from an X Layer smart account.
 
 Use this skill when the user asks to create an AgentPay wallet, pay a wallet or invoice, swap and bridge funds, send USDT/USDC, check balance, or track an AgentPay transaction.
 
@@ -73,6 +73,7 @@ Expected AgentPay tools:
 - `get_balance`: read USDT/USDC and relevant native balances.
 - `parse_invoice_payment`: parse structured invoice text into `prepare_payment` fields.
 - `parse_x402_payment_required`: parse a v2 x402 `PAYMENT-REQUIRED` object or header into `prepare_payment` fields.
+- `retry_x402_request`: retry a protected x402 HTTP resource with AgentPay receipt-proof headers after the matching payment is complete.
 - `prepare_contract_call`: prepare a guarded same-chain contract call intent with calldata hash review.
 - `quote_payment_route`: quote a direct or LI.FI swap + bridge + pay route without creating an intent.
 - `check_route_target_allowance`: check whether a LI.FI route target is already allowlisted.
@@ -86,16 +87,23 @@ Expected AgentPay tools:
 
 If a tool name differs in the active MCP server, use the closest AgentPay tool with the same purpose.
 
+## Network Selection
+
+AgentPay supports X Layer mainnet and testnet.
+
+If the user does not clearly name a network, ask whether they want mainnet or testnet before calling wallet, balance, route-target, admin, contract-call, quote, or payment preparation tools. Pass the selected value as `network: "mainnet" | "testnet"` whenever a tool accepts it. Users can switch networks per request; do not assume a wallet, balance, allowlist, or payment intent on one network applies to the other.
+
 ## Wallet Creation Workflow
 
 When the user asks to create an AgentPay wallet:
 
-1. Call `prepare_wallet_creation`.
-2. Give the user the setup signing link.
-3. Explain that the signing page proves wallet ownership and does not approve any payment.
-4. Wait for the user to sign on the setup page.
-5. Call `check_wallet_creation`.
-6. When complete, show the AgentPay smart account address and tell the user to fund it with supported tokens on BNB Chain.
+1. Confirm X Layer mainnet or testnet if the user did not specify it.
+2. Call `prepare_wallet_creation` with the selected network.
+3. Give the user the setup signing link.
+4. Explain that the signing page proves wallet ownership and does not approve any payment.
+5. Wait for the user to sign on the setup page.
+6. Call `check_wallet_creation`.
+7. When complete, show the AgentPay smart account address and network, then tell the user to fund it with supported tokens on that X Layer network.
 
 Never claim the wallet is ready until `check_wallet_creation` confirms completion.
 
@@ -109,9 +117,10 @@ Show the action, account address, owner address, chain, transaction target, and 
 
 When the user asks about funds or before preparing payment:
 
-1. Call `get_agent_wallet` if the active wallet is unknown.
-2. Call `get_balance`.
-3. Show balances with token symbols, chain names, and wallet address.
+1. Confirm X Layer mainnet or testnet if the request is ambiguous.
+2. Call `get_agent_wallet` with the selected network if the active wallet is unknown.
+3. Call `get_balance` with the selected network.
+4. Show balances with token symbols, chain names, and wallet address.
 
 If the wallet is not created, use the wallet creation workflow first.
 
@@ -133,13 +142,15 @@ When an HTTP endpoint returns an x402 v2 `PAYMENT-REQUIRED` response:
 1. Call `parse_x402_payment_required` with the copied response object or base64 header.
 2. Show the resource, scheme, network, token, amount, recipient, and timeout.
 3. Tell the user that AgentPay can prepare the stablecoin transfer with the returned `paymentInput`.
-4. Continue with the normal payment workflow using the full returned `paymentInput`, including its `paymentType`, only if the merchant accepts direct/custom settlement or the user understands that standard x402 exact endpoints still require a `PAYMENT-SIGNATURE` from an x402-capable signer.
+4. Continue with the normal payment workflow using the full returned `paymentInput`, including its `paymentType`.
+5. After `execute_payment` and `track_payment` return `COMPLETED`, call `retry_x402_request` with the original `PAYMENT-REQUIRED` object/header and the completed `paymentIntentId`.
+6. Return the protected resource response to the user when the retry succeeds.
 
-Never claim a direct AgentPay transfer is a complete standard x402 payment unless the merchant explicitly supports that settlement path.
+`retry_x402_request` attaches the AgentPay receipt proof as both `X-PAYMENT` and `PAYMENT-SIGNATURE`. Do not claim universal x402 exact facilitator compatibility unless the merchant supports this AgentPay receipt-proof bridge or the integration uses a native x402 signer/facilitator path.
 
 ## Contract Call Workflow
 
-Use `prepare_contract_call` only for same-chain BNB Chain contract calls where the user provides or confirms the target address, calldata, maximum token spend, and purpose.
+Use `prepare_contract_call` only for same-chain X Layer contract calls where the user provides or confirms the target address, calldata, maximum token spend, and purpose.
 
 Before execution:
 
@@ -155,7 +166,7 @@ Never prepare contract calls from vague prose, never modify calldata after prepa
 
 For every payment:
 
-1. Understand the requested recipient, amount, token, destination chain, and purpose.
+1. Understand the requested recipient, amount, token, X Layer source network, destination chain, and purpose. Ask for mainnet or testnet if omitted.
 2. Call `quote_payment_route` when route preview is useful or the source/destination token or chain may differ.
 3. Call `prepare_payment`.
 4. Show the returned payment summary to the user.
@@ -265,5 +276,5 @@ Use these responses:
 - Never run `npx @agentpay-ai/agentpay install` without explicit user approval when acting on the user's machine.
 - Never treat installation approval as payment approval.
 - Never treat setup signature as payment approval.
-- Never treat an x402 parse result as payment approval or protocol settlement.
+- Never treat an x402 parse result as payment approval or protocol settlement; retry x402 resources only after the matching payment intent is `COMPLETED`.
 - Never promise that a bridge is complete until tracking confirms destination delivery.

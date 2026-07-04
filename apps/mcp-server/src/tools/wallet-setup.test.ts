@@ -33,6 +33,7 @@ describe("prepareWalletCreation", () => {
     assert.equal(created[0].status, "PENDING");
     assert.equal(created[0].executorAddress, "0x4444444444444444444444444444444444444444");
     assert.equal(created[0].expiresAt, "2026-07-03T04:15:00.000Z");
+    assert.equal(created[0].homeChainId, 196);
     assert.equal(
       created[0].messageToSign,
       [
@@ -40,7 +41,7 @@ describe("prepareWalletCreation", () => {
         "Setup ID: setup_123",
         "Owner: connected signing wallet",
         "Executor: 0x4444444444444444444444444444444444444444",
-        "Chain: BNB Chain",
+        "Chain: X Layer",
         "Expires: 2026-07-03T04:15:00.000Z",
         "This signature proves wallet ownership only. It does not approve a payment or token transfer.",
       ].join("\n"),
@@ -51,6 +52,8 @@ describe("prepareWalletCreation", () => {
       setupUrl: "https://setup.agentpay.dev/setup?setup_intent_id=setup_123",
       messageToSign: created[0].messageToSign,
       expiresAt: "2026-07-03T04:15:00.000Z",
+      homeChainId: 196,
+      homeChain: "X Layer",
     });
   });
 
@@ -78,14 +81,14 @@ describe("prepareWalletCreation", () => {
 
     assert.equal(created[0].ownerAddress, "0x2222222222222222222222222222222222222222");
     assert.match(created[0].messageToSign, /Owner: 0x2222222222222222222222222222222222222222/);
-    assert.match(created[0].messageToSign, /Chain: BNB Chain/);
+    assert.match(created[0].messageToSign, /Chain: X Layer/);
   });
 
-  it("uses the configured BNB Chain testnet in the setup signing message", async () => {
+  it("uses the requested X Layer testnet in the setup signing message", async () => {
     const created: SetupIntentRecord[] = [];
 
     await prepareWalletCreation(
-      {},
+      { network: "testnet" },
       {
         setupIntents: {
           async createSetupIntent(intent) {
@@ -100,11 +103,11 @@ describe("prepareWalletCreation", () => {
         clock: () => new Date("2026-07-03T04:00:00.000Z"),
         createSetupIntentId: () => "setup_testnet",
         setupTtlSeconds: 900,
-        homeChainId: 97,
       },
     );
 
-    assert.match(created[0].messageToSign, /Chain: BNB Chain Testnet/);
+    assert.match(created[0].messageToSign, /Chain: X Layer Testnet/);
+    assert.equal(created[0].homeChainId, 1952);
   });
 });
 
@@ -124,6 +127,7 @@ describe("checkWalletCreation", () => {
               expiresAt: "2026-07-03T04:15:00.000Z",
               accountAddress: "0x3333333333333333333333333333333333333333",
               completedAt: "2026-07-03T04:02:00.000Z",
+              homeChainId: 1952,
             };
           },
         },
@@ -138,6 +142,8 @@ describe("checkWalletCreation", () => {
       accountAddress: "0x3333333333333333333333333333333333333333",
       completedAt: "2026-07-03T04:02:00.000Z",
       expiresAt: "2026-07-03T04:15:00.000Z",
+      homeChainId: 1952,
+      homeChain: "X Layer Testnet",
     });
   });
 
@@ -166,15 +172,17 @@ describe("checkWalletCreation", () => {
 
 describe("getAgentWallet", () => {
   it("returns active wallet details when one exists", async () => {
+    const requests: unknown[] = [];
     const output = await getAgentWallet(
-      {},
+      { network: "testnet" },
       {
         wallets: {
-          async getActiveWallet() {
+          async getActiveWallet(request) {
+            requests.push(request);
             return {
               ownerAddress: "0x2222222222222222222222222222222222222222",
               accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
+              homeChainId: 1952,
               executorAddress: "0x4444444444444444444444444444444444444444",
               status: "ACTIVE",
             };
@@ -183,13 +191,14 @@ describe("getAgentWallet", () => {
       },
     );
 
+    assert.deepEqual(requests, [{ homeChainId: 1952 }]);
     assert.deepEqual(output, {
       status: "ACTIVE",
       wallet: {
         ownerAddress: "0x2222222222222222222222222222222222222222",
         accountAddress: "0x3333333333333333333333333333333333333333",
-        homeChainId: 56,
-        homeChain: "BNB Chain",
+        homeChainId: 1952,
+        homeChain: "X Layer Testnet",
         executorAddress: "0x4444444444444444444444444444444444444444",
       },
     });

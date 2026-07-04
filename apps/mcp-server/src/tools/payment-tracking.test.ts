@@ -11,10 +11,10 @@ const executingIntent: PaymentIntentRecord = {
   ownerAddress: "0x2222222222222222222222222222222222222222",
   status: "EXECUTING",
   paymentType: "WALLET_PAYMENT",
-  sourceChainId: 56,
+  sourceChainId: 196,
   destinationChainId: 8453,
   sourceTokenAddress: "0x5555555555555555555555555555555555555555",
-  sourceTokenSymbol: "USDT",
+  sourceTokenSymbol: "USDT0",
   destinationTokenAddress: "0x6666666666666666666666666666666666666666",
   destinationTokenSymbol: "USDC",
   recipientAddress: "0x1111111111111111111111111111111111111111",
@@ -40,16 +40,16 @@ const executingIntent: PaymentIntentRecord = {
 const directExecutingIntent: PaymentIntentRecord = {
   ...executingIntent,
   id: "pay_direct",
-  destinationChainId: 56,
+  destinationChainId: 196,
   destinationTokenAddress: executingIntent.sourceTokenAddress,
-  destinationTokenSymbol: "USDT",
+  destinationTokenSymbol: "USDT0",
   amountOut: "10",
   maxAmountIn: "10",
   routeProvider: "DIRECT",
   routeTarget: "0x0000000000000000000000000000000000000000",
   routeCalldata: "0x",
   routeCalldataHash: "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-  routeSummary: "Direct 10 USDT transfer on BNB Chain.",
+  routeSummary: "Direct 10 USDT0 transfer on X Layer.",
   estimatedFee: "0",
   estimatedEtaSeconds: 0,
   sourceTxHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
@@ -97,7 +97,7 @@ describe("trackPayment", () => {
     assert.deepEqual(statusRequests, [
       {
         txHash: executingIntent.sourceTxHash,
-        fromChainId: 56,
+        fromChainId: 196,
         toChainId: 8453,
       },
     ]);
@@ -153,7 +153,7 @@ describe("trackPayment", () => {
     assert.deepEqual(sourceStatusRequests, [
       {
         txHash: directExecutingIntent.sourceTxHash,
-        chainId: 56,
+        chainId: 196,
       },
     ]);
     assert.deepEqual(updates, [

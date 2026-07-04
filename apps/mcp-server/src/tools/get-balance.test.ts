@@ -1,22 +1,26 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { configureStableTokenMetadataOverrides } from "@agentpay-ai/shared";
+
 import { getBalance } from "./get-balance.ts";
 
 describe("getBalance", () => {
   it("reads configured stablecoin balances for the active wallet", async () => {
+    const walletReads: unknown[] = [];
     const reads: unknown[] = [];
     const nativeReads: unknown[] = [];
 
     const output = await getBalance(
-      {},
+      { network: "mainnet" },
       {
         wallets: {
-          async getActiveWallet() {
+          async getActiveWallet(request) {
+            walletReads.push(request);
             return {
               ownerAddress: "0x2222222222222222222222222222222222222222",
               accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
+              homeChainId: 196,
               executorAddress: "0x4444444444444444444444444444444444444444",
               status: "ACTIVE",
             };
@@ -26,7 +30,7 @@ describe("getBalance", () => {
           async getTokenBalance(request) {
             reads.push(request);
             return {
-              amount: request.tokenSymbol === "USDT" ? "12.5" : "3",
+              amount: request.tokenSymbol === "USDT0" ? "12.5" : "3",
             };
           },
         },
@@ -39,27 +43,28 @@ describe("getBalance", () => {
       },
     );
 
+    assert.deepEqual(walletReads, [{ homeChainId: 196 }]);
     assert.deepEqual(reads, [
       {
         accountAddress: "0x3333333333333333333333333333333333333333",
-        chainId: 56,
-        tokenAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-        tokenSymbol: "USDC",
-        decimals: 18,
+        chainId: 196,
+        tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+        tokenSymbol: "USDT0",
+        decimals: 6,
       },
       {
         accountAddress: "0x3333333333333333333333333333333333333333",
-        chainId: 56,
-        tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-        tokenSymbol: "USDT",
-        decimals: 18,
+        chainId: 196,
+        tokenAddress: "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
+        tokenSymbol: "USDC",
+        decimals: 6,
       },
     ]);
     assert.deepEqual(nativeReads, [
       {
         accountAddress: "0x3333333333333333333333333333333333333333",
-        chainId: 56,
-        tokenSymbol: "BNB",
+        chainId: 196,
+        tokenSymbol: "OKB",
         decimals: 18,
       },
     ]);
@@ -67,24 +72,24 @@ describe("getBalance", () => {
       status: "ACTIVE",
       accountAddress: "0x3333333333333333333333333333333333333333",
       ownerAddress: "0x2222222222222222222222222222222222222222",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       balances: [
         {
-          tokenSymbol: "USDC",
-          tokenAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-          amount: "3",
-          decimals: 18,
+          tokenSymbol: "USDT0",
+          tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+          amount: "12.5",
+          decimals: 6,
         },
         {
-          tokenSymbol: "USDT",
-          tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-          amount: "12.5",
-          decimals: 18,
+          tokenSymbol: "USDC",
+          tokenAddress: "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
+          amount: "3",
+          decimals: 6,
         },
       ],
       nativeBalance: {
-        tokenSymbol: "BNB",
+        tokenSymbol: "OKB",
         tokenAddress: "native",
         amount: "0.03",
         decimals: 18,
@@ -93,37 +98,53 @@ describe("getBalance", () => {
   });
 
   it("allows callers to request a stablecoin subset", async () => {
-    const output = await getBalance(
-      { tokenSymbols: ["USDT"] },
-      {
-        wallets: {
-          async getActiveWallet() {
-            return {
-              ownerAddress: "0x2222222222222222222222222222222222222222",
-              accountAddress: "0x3333333333333333333333333333333333333333",
-              homeChainId: 56,
-              executorAddress: "0x4444444444444444444444444444444444444444",
-              status: "ACTIVE",
-            };
-          },
-        },
-        tokenBalances: {
-          async getTokenBalance() {
-            return { amount: "12.5" };
-          },
-        },
-        nativeBalances: {
-          async getNativeBalance() {
-            return { amount: "0.03" };
-          },
+    configureStableTokenMetadataOverrides({
+      1952: {
+        USDT0: {
+          address: "0x9999999999999999999999999999999999999999",
+          decimals: 6,
         },
       },
-    );
+    });
+    const walletReads: unknown[] = [];
 
-    assert.deepEqual(
-      output.balances.map((balance) => balance.tokenSymbol),
-      ["USDT"],
-    );
+    try {
+      const output = await getBalance(
+        { tokenSymbols: ["USDT0"], homeChainId: 1952 },
+        {
+          wallets: {
+            async getActiveWallet(request) {
+              walletReads.push(request);
+              return {
+                ownerAddress: "0x2222222222222222222222222222222222222222",
+                accountAddress: "0x3333333333333333333333333333333333333333",
+                homeChainId: 1952,
+                executorAddress: "0x4444444444444444444444444444444444444444",
+                status: "ACTIVE",
+              };
+            },
+          },
+          tokenBalances: {
+            async getTokenBalance() {
+              return { amount: "12.5" };
+            },
+          },
+          nativeBalances: {
+            async getNativeBalance() {
+              return { amount: "0.03" };
+            },
+          },
+        },
+      );
+
+      assert.deepEqual(
+        output.balances.map((balance) => balance.tokenSymbol),
+        ["USDT0"],
+      );
+      assert.deepEqual(walletReads, [{ homeChainId: 1952 }]);
+    } finally {
+      configureStableTokenMetadataOverrides({});
+    }
   });
 
   it("returns NOT_CREATED when no active wallet exists", async () => {

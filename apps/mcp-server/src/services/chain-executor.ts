@@ -37,23 +37,24 @@ export const agentPayAccountInterface = new Interface([
 export const erc20Interface = new Interface(["function balanceOf(address account) view returns (uint256)"]);
 
 export interface TransactionSender {
-  sendTransaction(transaction: { to: string; data: string; value: bigint }): Promise<{ hash: string }>;
+  sendTransaction(transaction: { to: string; data: string; value: bigint }, chainId?: number): Promise<{ hash: string }>;
 }
 
 export interface RpcCaller {
-  call(transaction: { to: string; data: string }): Promise<string>;
+  call(transaction: { to: string; data: string }, chainId?: number): Promise<string>;
 }
 
 export interface NativeBalanceCaller {
-  getBalance(accountAddress: string): Promise<bigint>;
+  getBalance(accountAddress: string, chainId?: number): Promise<bigint>;
 }
 
 export interface TransactionReceiptCaller {
-  getTransactionReceipt(txHash: string): Promise<{ status: number | bigint | null } | null>;
+  getTransactionReceipt(txHash: string, chainId?: number): Promise<{ status: number | bigint | null } | null>;
 }
 
 export interface EthersRuntimeConfig {
   rpcUrl: string;
+  rpcUrls?: Partial<Record<number, string>>;
   executorPrivateKey: string;
 }
 
@@ -64,7 +65,7 @@ export function createEthersRoutePaymentExecutor(sender: TransactionSender): Pay
         to: request.accountAddress,
         data: encodeExecuteDirectPaymentCalldata(request),
         value: 0n,
-      });
+      }, request.chainId);
 
       return { sourceTxHash: transaction.hash };
     },
@@ -73,7 +74,7 @@ export function createEthersRoutePaymentExecutor(sender: TransactionSender): Pay
         to: request.accountAddress,
         data: encodeExecuteRoutePaymentCalldata(request),
         value: BigInt(request.maxNativeFee),
-      });
+      }, request.sourceChainId);
 
       return { sourceTxHash: transaction.hash };
     },
@@ -82,7 +83,7 @@ export function createEthersRoutePaymentExecutor(sender: TransactionSender): Pay
         to: request.accountAddress,
         data: encodeExecuteContractCallCalldata(request),
         value: BigInt(request.maxNativeFee),
-      });
+      }, request.chainId);
 
       return { sourceTxHash: transaction.hash };
     },
@@ -95,7 +96,7 @@ export function createEthersTokenBalanceChecker(caller: RpcCaller): TokenBalance
       const balanceData = await caller.call({
         to: request.tokenAddress,
         data: erc20Interface.encodeFunctionData("balanceOf", [request.accountAddress]),
-      });
+      }, request.chainId);
       const [balance] = AbiCoder.defaultAbiCoder().decode(["uint256"], balanceData);
       return (
         BigInt(balance) >=
@@ -112,7 +113,7 @@ export function createEthersSourceTransactionStatusProvider(
     async getSourceTransactionStatus(
       request: SourceTransactionStatusRequest,
     ): Promise<SourceTransactionStatusResult> {
-      const receipt = await caller.getTransactionReceipt(request.txHash);
+      const receipt = await caller.getTransactionReceipt(request.txHash, request.chainId);
 
       if (!receipt || receipt.status === null) {
         return { status: "PENDING" };
@@ -129,7 +130,7 @@ export function createEthersRouteTargetAllowanceChecker(caller: RpcCaller): Rout
       const allowedData = await caller.call({
         to: request.accountAddress,
         data: agentPayAccountInterface.encodeFunctionData("allowedRouteTargets", [request.routeTarget]),
-      });
+      }, request.chainId);
       const [allowed] = AbiCoder.defaultAbiCoder().decode(["bool"], allowedData);
       return Boolean(allowed);
     },
@@ -142,7 +143,7 @@ export function createEthersTokenBalanceReader(caller: RpcCaller): TokenBalanceR
       const balanceData = await caller.call({
         to: request.tokenAddress,
         data: erc20Interface.encodeFunctionData("balanceOf", [request.accountAddress]),
-      });
+      }, request.chainId);
       const [balance] = AbiCoder.defaultAbiCoder().decode(["uint256"], balanceData);
       return {
         amount: atomicToDecimal(BigInt(balance), request.decimals),
@@ -154,7 +155,7 @@ export function createEthersTokenBalanceReader(caller: RpcCaller): TokenBalanceR
 export function createEthersNativeBalanceReader(caller: NativeBalanceCaller): NativeBalanceReader {
   return {
     async getNativeBalance(request: NativeBalanceReadRequest): Promise<TokenBalanceReadResult> {
-      const balance = await caller.getBalance(request.accountAddress);
+      const balance = await caller.getBalance(request.accountAddress, request.chainId);
       return {
         amount: atomicToDecimal(balance, request.decimals),
       };
@@ -170,16 +171,57 @@ export function createEthersRuntimeAdapters(config: EthersRuntimeConfig): {
   nativeBalances: NativeBalanceReader;
   routeTargetAllowances: RouteTargetAllowanceChecker;
 } {
-  const provider = new JsonRpcProvider(config.rpcUrl);
-  const wallet = new Wallet(config.executorPrivateKey, provider);
+  const providerRouter = createProviderRouter(config);
+  const sender: TransactionSender = {
+    async sendTransaction(transaction, chainId) {
+      const wallet = new Wallet(config.executorPrivateKey, providerRouter.getProvider(chainId));
+      return wallet.sendTransaction(transaction);
+    },
+  };
 
   return {
-    executor: createEthersRoutePaymentExecutor(wallet),
-    balances: createEthersTokenBalanceChecker(provider),
-    sourceTransactions: createEthersSourceTransactionStatusProvider(provider),
-    tokenBalances: createEthersTokenBalanceReader(provider),
-    nativeBalances: createEthersNativeBalanceReader(provider),
-    routeTargetAllowances: createEthersRouteTargetAllowanceChecker(provider),
+    executor: createEthersRoutePaymentExecutor(sender),
+    balances: createEthersTokenBalanceChecker(providerRouter),
+    sourceTransactions: createEthersSourceTransactionStatusProvider(providerRouter),
+    tokenBalances: createEthersTokenBalanceReader(providerRouter),
+    nativeBalances: createEthersNativeBalanceReader(providerRouter),
+    routeTargetAllowances: createEthersRouteTargetAllowanceChecker(providerRouter),
+  };
+}
+
+export function resolveRpcUrlForChain(config: Pick<EthersRuntimeConfig, "rpcUrl" | "rpcUrls">, chainId?: number): string {
+  return chainId !== undefined ? config.rpcUrls?.[chainId] ?? config.rpcUrl : config.rpcUrl;
+}
+
+function createProviderRouter(config: EthersRuntimeConfig): RpcCaller & NativeBalanceCaller & TransactionReceiptCaller & {
+  getProvider(chainId?: number): JsonRpcProvider;
+} {
+  const providers = new Map<string, JsonRpcProvider>();
+
+  function getProvider(chainId?: number): JsonRpcProvider {
+    const rpcUrl = resolveRpcUrlForChain(config, chainId);
+    const existing = providers.get(rpcUrl);
+
+    if (existing) {
+      return existing;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    providers.set(rpcUrl, provider);
+    return provider;
+  }
+
+  return {
+    getProvider,
+    async call(transaction, chainId) {
+      return getProvider(chainId).call(transaction);
+    },
+    async getBalance(accountAddress, chainId) {
+      return getProvider(chainId).getBalance(accountAddress);
+    },
+    async getTransactionReceipt(txHash, chainId) {
+      return getProvider(chainId).getTransactionReceipt(txHash);
+    },
   };
 }
 

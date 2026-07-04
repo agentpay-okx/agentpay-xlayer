@@ -1,12 +1,14 @@
 import { z } from "zod";
 
-export const STABLE_TOKEN_SYMBOLS = ["USDC", "USDT"] as const;
+export const STABLE_TOKEN_SYMBOLS = ["USDT0", "USDC", "USDT"] as const;
+export const DEFAULT_STABLE_TOKEN_SYMBOLS = ["USDT0", "USDC"] as const satisfies readonly StableTokenSymbol[];
 
 export const stableTokenSymbolSchema = z.enum(STABLE_TOKEN_SYMBOLS);
 
 export type StableTokenSymbol = z.infer<typeof stableTokenSymbolSchema>;
 
 export const STABLE_TOKEN_DECIMALS: Record<StableTokenSymbol, number> = {
+  USDT0: 6,
   USDC: 6,
   USDT: 6,
 };
@@ -23,31 +25,25 @@ export type StableTokenMetadataOverrides = Partial<
 
 let configuredStableTokenMetadataOverrides: StableTokenMetadataOverrides = {};
 
-export const STABLE_TOKENS_BY_CHAIN: Record<number, Record<StableTokenSymbol, StableTokenMetadata>> = {
-  56: {
+export const STABLE_TOKENS_BY_CHAIN: Record<number, Partial<Record<StableTokenSymbol, StableTokenMetadata>>> = {
+  196: {
+    USDT0: {
+      symbol: "USDT0",
+      address: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      decimals: 6,
+    },
     USDC: {
       symbol: "USDC",
-      address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-      decimals: 18,
-    },
-    USDT: {
-      symbol: "USDT",
-      address: "0x55d398326f99059fF775485246999027B3197955",
-      decimals: 18,
-    },
-  },
-  97: {
-    USDC: {
-      symbol: "USDC",
-      address: "0xEC1C60D64a06896Df296438c12edD14E974FDE47",
+      address: "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
       decimals: 6,
     },
     USDT: {
       symbol: "USDT",
-      address: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
-      decimals: 18,
+      address: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      decimals: 6,
     },
   },
+  1952: {},
   8453: {
     USDC: {
       symbol: "USDC",
@@ -77,15 +73,18 @@ export function getStableTokenDecimals(symbol: string): number {
 export function getStableTokenMetadata(chainId: number, symbol: string): StableTokenMetadata {
   const parsedSymbol = stableTokenSymbolSchema.parse(symbol);
   const metadata = STABLE_TOKENS_BY_CHAIN[chainId]?.[parsedSymbol];
+  const override = configuredStableTokenMetadataOverrides[chainId]?.[parsedSymbol];
 
-  if (!metadata) {
+  if (!metadata && !override?.address) {
     throw new Error(`Unsupported stable token ${parsedSymbol} on chain ${chainId}.`);
   }
 
-  const override = configuredStableTokenMetadataOverrides[chainId]?.[parsedSymbol];
-
   return {
-    ...metadata,
+    ...(metadata ?? {
+      symbol: parsedSymbol,
+      address: override?.address ?? "",
+      decimals: STABLE_TOKEN_DECIMALS[parsedSymbol],
+    }),
     ...override,
     symbol: parsedSymbol,
   };
@@ -97,4 +96,15 @@ export function getStableTokenAddress(chainId: number, symbol: string): string {
 
 export function getStableTokenDecimalsForChain(chainId: number, symbol: string): number {
   return getStableTokenMetadata(chainId, symbol).decimals;
+}
+
+export function getSupportedStableTokenMetadataForChain(chainId: number): StableTokenMetadata[] {
+  const staticTokens = STABLE_TOKENS_BY_CHAIN[chainId] ?? {};
+  const overrideTokens = configuredStableTokenMetadataOverrides[chainId] ?? {};
+  const symbols = new Set<StableTokenSymbol>([
+    ...(Object.keys(staticTokens) as StableTokenSymbol[]),
+    ...(Object.keys(overrideTokens) as StableTokenSymbol[]),
+  ]);
+
+  return [...symbols].map((symbol) => getStableTokenMetadata(chainId, symbol));
 }

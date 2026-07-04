@@ -12,12 +12,10 @@ interface Vm {
 
 contract DeployAgentPayAccount {
     address internal constant VM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
-    uint256 public constant BNB_CHAIN_ID = 56;
-    uint256 public constant BNB_TESTNET_CHAIN_ID = 97;
-    address public constant BNB_USDC = 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d;
-    address public constant BNB_USDT = 0x55d398326f99059fF775485246999027B3197955;
-    address public constant BNB_TESTNET_USDC = 0xEC1C60D64a06896Df296438c12edD14E974FDE47;
-    address public constant BNB_TESTNET_USDT = 0x337610d27c682E347C9cD60BD4b3b107C9d34dDd;
+    uint256 public constant XLAYER_CHAIN_ID = 196;
+    uint256 public constant XLAYER_TESTNET_CHAIN_ID = 1952;
+    address public constant XLAYER_USDT0 = 0x779Ded0c9e1022225f8E0630b35a9b54bE713736;
+    address public constant XLAYER_USDC = 0x74b7F16337b8972027F6196A17a631aC6dE26d22;
 
     Vm internal constant vm = Vm(VM_ADDRESS);
 
@@ -39,7 +37,7 @@ contract DeployAgentPayAccount {
         public
         returns (AgentPayAccount account)
     {
-        account = deployForChain(owner, executor, initialRouteTargets, BNB_CHAIN_ID);
+        account = deployForChain(owner, executor, initialRouteTargets, XLAYER_CHAIN_ID);
     }
 
     function deployForChain(address owner, address executor, address[] memory initialRouteTargets, uint256 chainId)
@@ -50,20 +48,20 @@ contract DeployAgentPayAccount {
         emit AgentPayAccountDeployed(address(account), owner, executor);
     }
 
-    function defaultAllowedTokens() public pure returns (address[] memory tokens) {
-        return defaultAllowedTokensForChain(BNB_CHAIN_ID);
+    function defaultAllowedTokens() public returns (address[] memory tokens) {
+        return defaultAllowedTokensForChain(XLAYER_CHAIN_ID);
     }
 
-    function defaultAllowedTokensForChain(uint256 chainId) public pure returns (address[] memory tokens) {
+    function defaultAllowedTokensForChain(uint256 chainId) public returns (address[] memory tokens) {
         tokens = new address[](2);
-        if (chainId == BNB_CHAIN_ID) {
-            tokens[0] = BNB_USDC;
-            tokens[1] = BNB_USDT;
+        if (chainId == XLAYER_CHAIN_ID) {
+            tokens[0] = XLAYER_USDT0;
+            tokens[1] = XLAYER_USDC;
             return tokens;
         }
-        if (chainId == BNB_TESTNET_CHAIN_ID) {
-            tokens[0] = BNB_TESTNET_USDC;
-            tokens[1] = BNB_TESTNET_USDT;
+        if (chainId == XLAYER_TESTNET_CHAIN_ID) {
+            tokens[0] = vm.envAddress("AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS");
+            tokens[1] = vm.envAddress("AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS");
             return tokens;
         }
         revert UnsupportedDeployChain(chainId);

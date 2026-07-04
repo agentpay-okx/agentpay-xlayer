@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 import { getChainName } from "./chains.ts";
-import { evmAddressSchema, preparePaymentInputSchema } from "./payment-intent.ts";
+import { evmAddressSchema, preparePaymentInputSchema, type PaymentIntentRecord } from "./payment-intent.ts";
 import { getStableTokenMetadata, STABLE_TOKEN_SYMBOLS, stableTokenSymbolSchema } from "./tokens.ts";
 import type { StableTokenSymbol } from "./tokens.ts";
 
@@ -9,10 +11,28 @@ const positiveIntegerStringSchema = z.string().regex(/^[1-9]\d*$/, "Expected a p
 
 export const parseX402PaymentRequiredInputSchema = z.object({
   paymentRequired: z.union([z.string().trim().min(1), z.record(z.string(), z.unknown())]),
-  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT"),
+  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT0"),
 });
 
 export type ParseX402PaymentRequiredInput = z.input<typeof parseX402PaymentRequiredInputSchema>;
+
+const retryX402HttpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET");
+
+export const retryX402RequestInputSchema = z.object({
+  paymentRequired: parseX402PaymentRequiredInputSchema.shape.paymentRequired,
+  paymentIntentId: z.string().trim().min(1),
+  request: z
+    .object({
+      url: z.string().url().optional(),
+      method: retryX402HttpMethodSchema,
+      headers: z.record(z.string(), z.string()).default({}),
+      body: z.string().optional(),
+    })
+    .default({ method: "GET", headers: {} }),
+});
+
+export type RetryX402RequestInput = z.input<typeof retryX402RequestInputSchema>;
+export type ParsedRetryX402RequestInput = z.output<typeof retryX402RequestInputSchema>;
 
 const x402ResourceInfoSchema = z
   .object({
@@ -78,6 +98,27 @@ export interface ParsedX402PaymentRequired {
   standardX402SignatureRequired: true;
 }
 
+export interface AgentPayX402PaymentProof {
+  x402Version: 2;
+  scheme: "agentpay-receipt";
+  paymentIntentId: string;
+  paymentType: "X402_PAYMENT";
+  payer: string;
+  ownerAddress: string;
+  resourceUrl: string;
+  requirementHash: string;
+  network: string;
+  chainId: number;
+  asset: string;
+  payTo: string;
+  amount: string;
+  amountDecimal: string;
+  sourceTxHash: string;
+  destinationTxHash?: string;
+  settlementTxHash: string;
+  completedAt?: string;
+}
+
 export function parseX402PaymentRequired(rawInput: ParseX402PaymentRequiredInput): ParsedX402PaymentRequired {
   const input = parseX402PaymentRequiredInputSchema.parse(rawInput);
   const paymentRequired = x402PaymentRequiredSchema.parse(decodePaymentRequired(input.paymentRequired));
@@ -121,6 +162,58 @@ export function parseX402PaymentRequired(rawInput: ParseX402PaymentRequiredInput
   };
 }
 
+export function createAgentPayX402PaymentHeader(request: {
+  parsed: ParsedX402PaymentRequired;
+  paymentIntent: PaymentIntentRecord;
+}): string {
+  return encodeBase64UrlJson(createAgentPayX402PaymentProof(request));
+}
+
+export function decodeAgentPayX402PaymentHeader(header: string): AgentPayX402PaymentProof {
+  const decoded = JSON.parse(Buffer.from(header, "base64url").toString("utf8")) as unknown;
+  return agentPayX402PaymentProofSchema.parse(decoded);
+}
+
+export function createAgentPayX402PaymentProof(request: {
+  parsed: ParsedX402PaymentRequired;
+  paymentIntent: PaymentIntentRecord;
+}): AgentPayX402PaymentProof {
+  const { parsed, paymentIntent } = request;
+  const selected = parsed.selectedRequirement;
+
+  validateCompletedX402Intent(parsed, paymentIntent);
+
+  const settlementTxHash = paymentIntent.destinationTxHash ?? paymentIntent.sourceTxHash;
+
+  return {
+    x402Version: 2,
+    scheme: "agentpay-receipt",
+    paymentIntentId: paymentIntent.id,
+    paymentType: "X402_PAYMENT",
+    payer: paymentIntent.accountAddress,
+    ownerAddress: paymentIntent.ownerAddress,
+    resourceUrl: parsed.resource.url,
+    requirementHash: createX402RequirementHash(parsed),
+    network: selected.network,
+    chainId: selected.chainId,
+    asset: selected.asset,
+    payTo: selected.payTo,
+    amount: selected.amountAtomic,
+    amountDecimal: selected.amount,
+    sourceTxHash: paymentIntent.sourceTxHash!,
+    ...(paymentIntent.destinationTxHash ? { destinationTxHash: paymentIntent.destinationTxHash } : {}),
+    settlementTxHash: settlementTxHash!,
+    ...(paymentIntent.completedAt ? { completedAt: paymentIntent.completedAt } : {}),
+  };
+}
+
+export function createX402RequirementHash(parsed: ParsedX402PaymentRequired): string {
+  return `0x${bytesToHex(keccak_256(new TextEncoder().encode(stableStringify({
+    resourceUrl: parsed.resource.url,
+    selectedRequirement: parsed.selectedRequirement,
+  }))))}`;
+}
+
 function decodePaymentRequired(paymentRequired: string | Record<string, unknown>): unknown {
   if (typeof paymentRequired !== "string") {
     return paymentRequired;
@@ -130,6 +223,57 @@ function decodePaymentRequired(paymentRequired: string | Record<string, unknown>
   const json = trimmed.startsWith("{") ? trimmed : Buffer.from(trimmed, "base64").toString("utf8");
 
   return JSON.parse(json) as unknown;
+}
+
+const agentPayX402PaymentProofSchema = z.object({
+  x402Version: z.literal(2),
+  scheme: z.literal("agentpay-receipt"),
+  paymentIntentId: z.string().min(1),
+  paymentType: z.literal("X402_PAYMENT"),
+  payer: evmAddressSchema,
+  ownerAddress: evmAddressSchema,
+  resourceUrl: z.string().url(),
+  requirementHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  network: z.string().min(1),
+  chainId: z.number().int().positive(),
+  asset: z.string().min(1),
+  payTo: evmAddressSchema,
+  amount: positiveIntegerStringSchema,
+  amountDecimal: z.string().min(1),
+  sourceTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  destinationTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  settlementTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  completedAt: z.string().optional(),
+});
+
+function validateCompletedX402Intent(parsed: ParsedX402PaymentRequired, paymentIntent: PaymentIntentRecord): void {
+  if (paymentIntent.status !== "COMPLETED") {
+    throw new Error(`Payment intent ${paymentIntent.id} must be COMPLETED before x402 proof can be generated.`);
+  }
+
+  if (paymentIntent.paymentType !== "X402_PAYMENT") {
+    throw new Error(`Payment intent ${paymentIntent.id} must be an X402_PAYMENT intent.`);
+  }
+
+  if (!paymentIntent.sourceTxHash) {
+    throw new Error(`Payment intent ${paymentIntent.id} is missing a source transaction hash.`);
+  }
+
+  const selected = parsed.selectedRequirement;
+  const matchesRequirement =
+    paymentIntent.destinationChainId === selected.chainId &&
+    paymentIntent.destinationTokenAddress.toLowerCase() === selected.asset.toLowerCase() &&
+    paymentIntent.destinationTokenSymbol === selected.tokenSymbol &&
+    paymentIntent.recipientAddress.toLowerCase() === selected.payTo.toLowerCase() &&
+    paymentIntent.amountOut === selected.amount;
+
+  if (!matchesRequirement) {
+    throw new Error(`Payment intent ${paymentIntent.id} does not match the x402 requirement.`);
+  }
+}
+
+function encodeBase64UrlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
 function toSupportedRequirement(requirement: z.infer<typeof x402PaymentRequirementSchema>):
@@ -201,4 +345,20 @@ function createX402Purpose(resource: z.infer<typeof x402ResourceInfoSchema>): st
   const details = [resource.serviceName, resource.description].filter(Boolean).join(": ") || resource.url;
 
   return `x402 payment for ${details}`.slice(0, 280);
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
 }

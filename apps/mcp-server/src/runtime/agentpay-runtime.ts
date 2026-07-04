@@ -6,6 +6,7 @@ import type { GetBalanceInput } from "@agentpay-ai/shared";
 import type { ListPaymentEventsInput, ListTransactionsInput, TrackPaymentInput } from "@agentpay-ai/shared";
 import type { ParseInvoicePaymentInput } from "@agentpay-ai/shared";
 import type { ParseX402PaymentRequiredInput } from "@agentpay-ai/shared";
+import type { RetryX402RequestInput } from "@agentpay-ai/shared";
 import type { PrepareContractCallInput } from "@agentpay-ai/shared";
 import type { PrepareAccountAdminTransactionInput } from "@agentpay-ai/shared";
 import type { QuotePaymentRouteInput } from "@agentpay-ai/shared";
@@ -37,7 +38,7 @@ import type { ExecutePaymentDependencies } from "../tools/execute-payment.ts";
 import { createGetBalanceHandler } from "../tools/get-balance.ts";
 import type { GetBalanceDependencies } from "../tools/get-balance.ts";
 import { createParseInvoicePaymentHandler } from "../tools/invoice.ts";
-import { createParseX402PaymentRequiredHandler } from "../tools/x402.ts";
+import { createParseX402PaymentRequiredHandler, createRetryX402RequestHandler } from "../tools/x402.ts";
 import { createPrepareAccountAdminTransactionHandler } from "../tools/account-admin.ts";
 import type { PrepareAccountAdminTransactionDependencies } from "../tools/account-admin.ts";
 import {
@@ -75,16 +76,17 @@ import type {
   PrepareWalletCreationDependencies,
 } from "../tools/wallet-setup.ts";
 
-const REQUIRED_ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BNB_RPC_URL", "EXECUTOR_PRIVATE_KEY"];
+const REQUIRED_ENV_NAMES = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "XLAYER_RPC_URL", "EXECUTOR_PRIVATE_KEY"];
 const DEFAULT_SETUP_WEB_URL = "http://localhost:3000/setup";
 const privateKeyPattern = /^0x[a-fA-F0-9]{64}$/;
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
-const setupHomeChainIds = new Set([56, 97]);
+const setupHomeChainIds = new Set([196, 1952]);
 
 export interface AgentPayRuntimeConfig {
   supabaseUrl: string;
   serviceRoleKey: string;
-  bnbRpcUrl: string;
+  xlayerRpcUrl: string;
+  xlayerRpcUrls?: Partial<Record<number, string>>;
   executorPrivateKey: string;
   lifiApiKey?: string;
   lifiBaseUrl?: string;
@@ -114,6 +116,7 @@ export interface AgentPayRuntimeFactories {
 
 export interface AgentPayRuntimeOptions {
   fetch?: typeof fetch;
+  x402Fetch?: typeof fetch;
   clock?: () => Date;
   createId?: () => string;
   createNonce?: () => string;
@@ -133,6 +136,7 @@ export interface AgentPayRuntime {
   parseX402PaymentRequired(
     input: ParseX402PaymentRequiredInput,
   ): ReturnType<ReturnType<typeof createParseX402PaymentRequiredHandler>>;
+  retryX402Request(input: RetryX402RequestInput): ReturnType<ReturnType<typeof createRetryX402RequestHandler>>;
   prepareContractCall(input: PrepareContractCallInput): ReturnType<ReturnType<typeof createPrepareContractCallHandler>>;
   quotePaymentRoute(input: QuotePaymentRouteInput): ReturnType<ReturnType<typeof createQuotePaymentRouteHandler>>;
   checkRouteTargetAllowance(
@@ -156,23 +160,25 @@ export function parseAgentPayEnv(env: NodeJS.ProcessEnv | Record<string, string 
     Object.entries(env).map(([key, value]) => [key, value?.trim() === "" ? undefined : value?.trim()]),
   ) as Record<string, string | undefined>;
   const homeChainId = parseOptionalHomeChainId(normalized.AGENTPAY_HOME_CHAIN_ID);
+  const xlayerRpcUrls = parseXLayerRpcUrls(normalized);
   const stableTokenOverrides = parseStableTokenOverrides(normalized);
   const missing = REQUIRED_ENV_NAMES.filter((name) => !normalized[name]);
   const invalid = [
     normalized.SUPABASE_URL && !isHttpUrl(normalized.SUPABASE_URL) ? "SUPABASE_URL" : undefined,
-    normalized.BNB_RPC_URL && !isHttpUrl(normalized.BNB_RPC_URL) ? "BNB_RPC_URL" : undefined,
+    normalized.XLAYER_RPC_URL && !isHttpUrl(normalized.XLAYER_RPC_URL) ? "XLAYER_RPC_URL" : undefined,
+    normalized.XLAYER_MAINNET_RPC_URL && !isHttpUrl(normalized.XLAYER_MAINNET_RPC_URL)
+      ? "XLAYER_MAINNET_RPC_URL"
+      : undefined,
+    normalized.XLAYER_TESTNET_RPC_URL && !isHttpUrl(normalized.XLAYER_TESTNET_RPC_URL)
+      ? "XLAYER_TESTNET_RPC_URL"
+      : undefined,
     normalized.EXECUTOR_PRIVATE_KEY && !privateKeyPattern.test(normalized.EXECUTOR_PRIVATE_KEY)
       ? "EXECUTOR_PRIVATE_KEY"
       : undefined,
     normalized.LIFI_BASE_URL && !isHttpUrl(normalized.LIFI_BASE_URL) ? "LIFI_BASE_URL" : undefined,
     normalized.SETUP_WEB_URL && !isHttpUrl(normalized.SETUP_WEB_URL) ? "SETUP_WEB_URL" : undefined,
     normalized.AGENTPAY_HOME_CHAIN_ID && !homeChainId ? "AGENTPAY_HOME_CHAIN_ID" : undefined,
-    normalized.AGENTPAY_BNB_TESTNET_USDC_ADDRESS && !addressPattern.test(normalized.AGENTPAY_BNB_TESTNET_USDC_ADDRESS)
-      ? "AGENTPAY_BNB_TESTNET_USDC_ADDRESS"
-      : undefined,
-    normalized.AGENTPAY_BNB_TESTNET_USDT_ADDRESS && !addressPattern.test(normalized.AGENTPAY_BNB_TESTNET_USDT_ADDRESS)
-      ? "AGENTPAY_BNB_TESTNET_USDT_ADDRESS"
-      : undefined,
+    ...validateStableTokenOverrideAddresses(normalized),
   ].filter((name): name is string => Boolean(name));
 
   if (missing.length > 0 || invalid.length > 0) {
@@ -182,7 +188,8 @@ export function parseAgentPayEnv(env: NodeJS.ProcessEnv | Record<string, string 
   return omitUndefined({
     supabaseUrl: normalized.SUPABASE_URL,
     serviceRoleKey: normalized.SUPABASE_SERVICE_ROLE_KEY,
-    bnbRpcUrl: normalized.BNB_RPC_URL,
+    xlayerRpcUrl: normalized.XLAYER_RPC_URL,
+    xlayerRpcUrls,
     executorPrivateKey: normalized.EXECUTOR_PRIVATE_KEY,
     lifiApiKey: normalized.LIFI_API_KEY,
     lifiBaseUrl: normalized.LIFI_BASE_URL,
@@ -212,7 +219,8 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
     }) as LifiRouteQuoteProviderConfig,
   );
   const chainAdapters = factories.createChainAdapters({
-    rpcUrl: config.bnbRpcUrl,
+    rpcUrl: config.xlayerRpcUrl,
+    rpcUrls: config.xlayerRpcUrls,
     executorPrivateKey: config.executorPrivateKey,
   });
   const executorAddress = options.executorAddress ?? new Wallet(config.executorPrivateKey).address;
@@ -235,14 +243,20 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
     }),
     getAgentWallet: createGetAgentWalletHandler({
       wallets: repositories.wallets,
+      homeChainId: config.homeChainId,
     } satisfies GetAgentWalletDependencies),
     getBalance: createGetBalanceHandler({
       wallets: repositories.wallets,
       tokenBalances: chainAdapters.tokenBalances,
       nativeBalances: chainAdapters.nativeBalances,
+      homeChainId: config.homeChainId,
     }),
     parseInvoicePayment: createParseInvoicePaymentHandler(),
     parseX402PaymentRequired: createParseX402PaymentRequiredHandler(),
+    retryX402Request: createRetryX402RequestHandler({
+      paymentIntents: repositories.paymentIntents,
+      fetch: options.x402Fetch ?? options.fetch ?? fetch,
+    }),
     prepareContractCall: createPrepareContractCallHandler(
       omitUndefined({
         wallets: repositories.wallets,
@@ -251,6 +265,7 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
         clock,
         createId: options.createId ?? (() => createPaymentIntentId()),
         createNonce: options.createNonce ?? (() => createPaymentNonce()),
+        homeChainId: config.homeChainId,
         approvalTtlSeconds: options.approvalTtlSeconds,
       }) as PrepareContractCallDependencies,
     ),
@@ -258,16 +273,20 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
       wallets: repositories.wallets,
       routes,
       balances: chainAdapters.balances,
+      homeChainId: config.homeChainId,
     } satisfies QuotePaymentRouteDependencies),
     checkRouteTargetAllowance: createCheckRouteTargetAllowanceHandler({
       wallets: repositories.wallets,
       routeTargetAllowances: chainAdapters.routeTargetAllowances,
+      homeChainId: config.homeChainId,
     } satisfies CheckRouteTargetAllowanceDependencies),
     prepareAccountAdminTransaction: createPrepareAccountAdminTransactionHandler({
       wallets: repositories.wallets,
+      homeChainId: config.homeChainId,
     } satisfies PrepareAccountAdminTransactionDependencies),
     prepareRouteTargetAllowance: createPrepareRouteTargetAllowanceHandler({
       wallets: repositories.wallets,
+      homeChainId: config.homeChainId,
     } satisfies PrepareRouteTargetAllowanceDependencies),
     preparePayment: createPreparePaymentHandler(
       omitUndefined({
@@ -278,6 +297,7 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
         clock,
         createId: options.createId ?? (() => createPaymentIntentId()),
         createNonce: options.createNonce ?? (() => createPaymentNonce()),
+        homeChainId: config.homeChainId,
         approvalTtlSeconds: options.approvalTtlSeconds,
       }) as PreparePaymentDependencies,
     ),
@@ -352,29 +372,72 @@ function parseOptionalHomeChainId(value: string | undefined): number | undefined
   return Number.isInteger(parsed) && setupHomeChainIds.has(parsed) ? parsed : undefined;
 }
 
+function parseXLayerRpcUrls(env: Record<string, string | undefined>): Partial<Record<number, string>> | undefined {
+  const rpcUrls = omitUndefined({
+    196: env.XLAYER_MAINNET_RPC_URL,
+    1952: env.XLAYER_TESTNET_RPC_URL,
+  }) as Partial<Record<number, string>>;
+
+  return Object.keys(rpcUrls).length > 0 ? rpcUrls : undefined;
+}
+
 function parseStableTokenOverrides(env: Record<string, string | undefined>): StableTokenMetadataOverrides | undefined {
-  const bnbTestnetOverrides = {
-    ...(env.AGENTPAY_BNB_TESTNET_USDC_ADDRESS
+  const xlayerOverrides = {
+    ...(env.AGENTPAY_XLAYER_USDT0_ADDRESS
       ? {
-          USDC: {
-            address: env.AGENTPAY_BNB_TESTNET_USDC_ADDRESS,
+          USDT0: {
+            address: env.AGENTPAY_XLAYER_USDT0_ADDRESS,
           },
         }
       : {}),
-    ...(env.AGENTPAY_BNB_TESTNET_USDT_ADDRESS
+    ...(env.AGENTPAY_XLAYER_USDC_ADDRESS
+      ? {
+          USDC: {
+            address: env.AGENTPAY_XLAYER_USDC_ADDRESS,
+          },
+        }
+      : {}),
+  };
+  const xlayerTestnetOverrides = {
+    ...(env.AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS
+      ? {
+          USDT0: {
+            address: env.AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS,
+          },
+        }
+      : {}),
+    ...(env.AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS
+      ? {
+          USDC: {
+            address: env.AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS,
+          },
+        }
+      : {}),
+    ...(env.AGENTPAY_XLAYER_TESTNET_USDT_ADDRESS
       ? {
           USDT: {
-            address: env.AGENTPAY_BNB_TESTNET_USDT_ADDRESS,
+            address: env.AGENTPAY_XLAYER_TESTNET_USDT_ADDRESS,
           },
         }
       : {}),
   };
 
-  return Object.keys(bnbTestnetOverrides).length > 0
-    ? {
-        97: bnbTestnetOverrides,
-      }
-    : undefined;
+  const overrides = omitUndefined({
+    196: Object.keys(xlayerOverrides).length > 0 ? xlayerOverrides : undefined,
+    1952: Object.keys(xlayerTestnetOverrides).length > 0 ? xlayerTestnetOverrides : undefined,
+  }) as StableTokenMetadataOverrides;
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function validateStableTokenOverrideAddresses(env: Record<string, string | undefined>): string[] {
+  return [
+    "AGENTPAY_XLAYER_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_USDC_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDT_ADDRESS",
+  ].filter((name) => env[name] && !addressPattern.test(env[name]));
 }
 
 function omitUndefined<T extends Record<string, unknown>>(record: T): Partial<T> {

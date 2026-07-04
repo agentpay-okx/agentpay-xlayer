@@ -1,6 +1,7 @@
 import {
   getChainName,
   prepareAccountAdminTransactionInputSchema,
+  resolveXLayerHomeChainId,
   type PrepareAccountAdminTransactionInput,
 } from "@agentpay-ai/shared";
 import { Interface } from "ethers";
@@ -19,6 +20,7 @@ const accountAdminInterface = new Interface([
 
 export interface PrepareAccountAdminTransactionDependencies {
   wallets: AgentWalletRepository;
+  homeChainId?: number;
 }
 
 export interface AccountAdminTransaction {
@@ -52,7 +54,9 @@ export async function prepareAccountAdminTransaction(
   dependencies: PrepareAccountAdminTransactionDependencies,
 ): Promise<PrepareAccountAdminTransactionOutput> {
   const input = prepareAccountAdminTransactionInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet) {
     return {
@@ -137,6 +141,8 @@ export const prepareAccountAdminTransactionTool = {
       allowed: { type: "boolean" },
       toAddress: { type: "string" },
       amountAtomic: { type: "string" },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

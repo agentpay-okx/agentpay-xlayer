@@ -9,10 +9,10 @@ const awaitingIntent = {
   ownerAddress: "0x2222222222222222222222222222222222222222",
   status: "AWAITING_APPROVAL" as const,
   paymentType: "WALLET_PAYMENT" as const,
-  sourceChainId: 56,
+  sourceChainId: 196,
   destinationChainId: 8453,
   sourceTokenAddress: "0x5555555555555555555555555555555555555555",
-  sourceTokenSymbol: "USDT",
+  sourceTokenSymbol: "USDT0",
   destinationTokenAddress: "0x6666666666666666666666666666666666666666",
   destinationTokenSymbol: "USDC",
   recipientAddress: "0x1111111111111111111111111111111111111111",
@@ -35,16 +35,16 @@ const awaitingIntent = {
 const directIntent = {
   ...awaitingIntent,
   id: "pay_direct",
-  destinationChainId: 56,
+  destinationChainId: 196,
   destinationTokenAddress: awaitingIntent.sourceTokenAddress,
-  destinationTokenSymbol: "USDT",
+  destinationTokenSymbol: "USDT0",
   amountOut: "10",
   maxAmountIn: "10",
   routeProvider: "DIRECT" as const,
   routeTarget: "0x0000000000000000000000000000000000000000",
   routeCalldata: "0x",
   routeCalldataHash: "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-  routeSummary: "Direct 10 USDT transfer on BNB Chain.",
+  routeSummary: "Direct 10 USDT0 transfer on X Layer.",
   estimatedFee: "0",
   estimatedEtaSeconds: 0,
   nonce: "43",
@@ -55,9 +55,9 @@ const contractCallIntent = {
   ...awaitingIntent,
   id: "pay_contract",
   paymentType: "CONTRACT_CALL" as const,
-  destinationChainId: 56,
+  destinationChainId: 196,
   destinationTokenAddress: awaitingIntent.sourceTokenAddress,
-  destinationTokenSymbol: "USDT",
+  destinationTokenSymbol: "USDT0",
   recipientAddress: "0x8888888888888888888888888888888888888888",
   amountOut: "7.5",
   maxAmountIn: "7.5",
@@ -66,7 +66,7 @@ const contractCallIntent = {
   routeTarget: "0x8888888888888888888888888888888888888888",
   routeCalldata: "0xaabbccdd",
   routeCalldataHash: "0x40eed0325a12c6c6af8db2ea05450bfe21d6343b6fe955bff65045b67d9d5fe6",
-  routeSummary: "Contract call to 0x8888888888888888888888888888888888888888 on BNB Chain.",
+  routeSummary: "Contract call to 0x8888888888888888888888888888888888888888 on X Layer.",
   estimatedFee: "0",
   estimatedEtaSeconds: 0,
   nonce: "44",
@@ -106,9 +106,9 @@ describe("executePayment", () => {
           hasSufficientTokenBalance: async (request) => {
             assert.deepEqual(request, {
               accountAddress: awaitingIntent.accountAddress,
-              chainId: 56,
+              chainId: 196,
               tokenAddress: awaitingIntent.sourceTokenAddress,
-              tokenSymbol: "USDT",
+              tokenSymbol: "USDT0",
               requiredAmount: "10.18",
             });
             return true;
@@ -144,9 +144,9 @@ describe("executePayment", () => {
     assert.equal(executions.length, 1);
     assert.deepEqual(executions[0], {
       accountAddress: awaitingIntent.accountAddress,
-      sourceChainId: 56,
+      sourceChainId: 196,
       sourceTokenAddress: awaitingIntent.sourceTokenAddress,
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       maxAmountIn: "10.18",
       destinationChainId: 8453,
       recipientAddress: awaitingIntent.recipientAddress,
@@ -196,9 +196,9 @@ describe("executePayment", () => {
           hasSufficientTokenBalance: async (request) => {
             assert.deepEqual(request, {
               accountAddress: directIntent.accountAddress,
-              chainId: 56,
+              chainId: 196,
               tokenAddress: directIntent.sourceTokenAddress,
-              tokenSymbol: "USDT",
+              tokenSymbol: "USDT0",
               requiredAmount: "10",
             });
             return true;
@@ -222,9 +222,9 @@ describe("executePayment", () => {
     assert.deepEqual(executions, [
       {
         accountAddress: directIntent.accountAddress,
-        chainId: 56,
+        chainId: 196,
         tokenAddress: directIntent.sourceTokenAddress,
-        tokenSymbol: "USDT",
+        tokenSymbol: "USDT0",
         recipientAddress: directIntent.recipientAddress,
         amount: "10",
         nonce: "43",
@@ -274,9 +274,9 @@ describe("executePayment", () => {
           hasSufficientTokenBalance: async (request) => {
             assert.deepEqual(request, {
               accountAddress: contractCallIntent.accountAddress,
-              chainId: 56,
+              chainId: 196,
               tokenAddress: contractCallIntent.sourceTokenAddress,
-              tokenSymbol: "USDT",
+              tokenSymbol: "USDT0",
               requiredAmount: "7.5",
             });
             return true;
@@ -300,10 +300,10 @@ describe("executePayment", () => {
     assert.deepEqual(executions, [
       {
         accountAddress: contractCallIntent.accountAddress,
-        chainId: 56,
+        chainId: 196,
         target: "0x8888888888888888888888888888888888888888",
         tokenAddress: contractCallIntent.sourceTokenAddress,
-        tokenSymbol: "USDT",
+        tokenSymbol: "USDT0",
         maxTokenSpend: "7.5",
         callData: "0xaabbccdd",
         callDataHash: "0x40eed0325a12c6c6af8db2ea05450bfe21d6343b6fe955bff65045b67d9d5fe6",

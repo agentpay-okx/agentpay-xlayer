@@ -1,9 +1,11 @@
 import { z } from "zod";
 
-import { STABLE_TOKEN_SYMBOLS, stableTokenSymbolSchema } from "./tokens.ts";
+import { networkSelectionShape } from "./chains.ts";
+import { DEFAULT_STABLE_TOKEN_SYMBOLS, stableTokenSymbolSchema } from "./tokens.ts";
 
 export const getBalanceInputSchema = z.object({
-  tokenSymbols: z.array(stableTokenSymbolSchema).min(1).default([...STABLE_TOKEN_SYMBOLS]),
+  tokenSymbols: z.array(stableTokenSymbolSchema).min(1).default([...DEFAULT_STABLE_TOKEN_SYMBOLS]),
+  ...networkSelectionShape,
 });
 
 export type GetBalanceInput = z.input<typeof getBalanceInputSchema>;

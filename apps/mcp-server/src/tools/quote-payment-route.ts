@@ -4,6 +4,7 @@ import {
   getChainName,
   isDirectPaymentRoute,
   quotePaymentRouteInputSchema,
+  resolveXLayerHomeChainId,
   type QuotePaymentRouteInput,
   type RouteProvider,
 } from "@agentpay-ai/shared";
@@ -16,6 +17,7 @@ export interface QuotePaymentRouteDependencies {
   wallets: AgentWalletRepository;
   routes: RouteQuoteProvider;
   balances: TokenBalanceChecker;
+  homeChainId?: number;
 }
 
 export interface QuotePaymentRouteOutput {
@@ -46,7 +48,9 @@ export async function quotePaymentRoute(
   dependencies: QuotePaymentRouteDependencies,
 ): Promise<QuotePaymentRouteOutput> {
   const input = quotePaymentRouteInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet || wallet.status !== "ACTIVE") {
     throw new Error("No active AgentPay wallet is available.");
@@ -118,9 +122,11 @@ export const quotePaymentRouteTool = {
     properties: {
       recipientAddress: { type: "string" },
       destinationChainId: { type: "number" },
-      destinationTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      destinationTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
       amountOut: { type: "string" },
-      sourceTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      sourceTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

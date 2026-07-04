@@ -30,6 +30,8 @@ describe("registerAgentPayMcpTools", () => {
           setupUrl: "https://setup.agentpay.dev/setup?setup_intent_id=setup_runtime",
           messageToSign: "AgentPay wallet setup",
           expiresAt: "2026-07-03T04:15:00.000Z",
+          homeChainId: 196,
+          homeChain: "X Layer",
         };
       },
     });
@@ -43,6 +45,7 @@ describe("registerAgentPayMcpTools", () => {
       "get_balance",
       "parse_invoice_payment",
       "parse_x402_payment_required",
+      "retry_x402_request",
       "prepare_contract_call",
       "quote_payment_route",
       "check_route_target_allowance",
@@ -74,6 +77,8 @@ describe("registerAgentPayMcpTools", () => {
         setupUrl: "https://setup.agentpay.dev/setup?setup_intent_id=setup_runtime",
         messageToSign: "AgentPay wallet setup",
         expiresAt: "2026-07-03T04:15:00.000Z",
+        homeChainId: 196,
+        homeChain: "X Layer",
       },
     });
   });
@@ -88,18 +93,18 @@ describe("registerAgentPayMcpTools", () => {
           status: "ACTIVE",
           accountAddress: "0x3333333333333333333333333333333333333333",
           ownerAddress: "0x2222222222222222222222222222222222222222",
-          chainId: 56,
-          chain: "BNB Chain",
+          chainId: 196,
+          chain: "X Layer",
           balances: [
             {
-              tokenSymbol: "USDT",
-              tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+              tokenSymbol: "USDT0",
+              tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
               amount: "12.5",
               decimals: 18,
             },
           ],
           nativeBalance: {
-            tokenSymbol: "BNB",
+            tokenSymbol: "OKB",
             tokenAddress: "native",
             amount: "0.03",
             decimals: 18,
@@ -114,9 +119,9 @@ describe("registerAgentPayMcpTools", () => {
     assert.ok(registered);
     assert.match(String(registered.metadata.description), /Read AgentPay wallet token balances/);
 
-    const result = await registered.handler({ tokenSymbols: ["USDT"] });
+    const result = await registered.handler({ tokenSymbols: ["USDT0"] });
 
-    assert.deepEqual(balanceInputs, [{ tokenSymbols: ["USDT"] }]);
+    assert.deepEqual(balanceInputs, [{ tokenSymbols: ["USDT0"] }]);
     assert.deepEqual(result, {
       content: [
         {
@@ -128,18 +133,18 @@ describe("registerAgentPayMcpTools", () => {
         status: "ACTIVE",
         accountAddress: "0x3333333333333333333333333333333333333333",
         ownerAddress: "0x2222222222222222222222222222222222222222",
-        chainId: 56,
-        chain: "BNB Chain",
+        chainId: 196,
+        chain: "X Layer",
         balances: [
           {
-            tokenSymbol: "USDT",
-            tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+            tokenSymbol: "USDT0",
+            tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
             amount: "12.5",
             decimals: 18,
           },
         ],
         nativeBalance: {
-          tokenSymbol: "BNB",
+          tokenSymbol: "OKB",
           tokenAddress: "native",
           amount: "0.03",
           decimals: 18,
@@ -164,7 +169,7 @@ describe("registerAgentPayMcpTools", () => {
             destinationTokenSymbol: "USDC",
             amountOut: "10",
             purpose: "design bounty",
-            sourceTokenSymbol: "USDT",
+            sourceTokenSymbol: "USDT0",
             paymentType: "INVOICE_PAYMENT",
           },
           instructionToAgent:
@@ -191,7 +196,7 @@ describe("registerAgentPayMcpTools", () => {
     });
 
     assert.equal(invoiceInputs.length, 1);
-    assert.equal((invoiceInputs[0] as { sourceTokenSymbol: string }).sourceTokenSymbol, "USDT");
+    assert.equal((invoiceInputs[0] as { sourceTokenSymbol: string }).sourceTokenSymbol, "USDT0");
     assert.deepEqual((result as { structuredContent: unknown }).structuredContent, {
       status: "PARSED",
       invoiceId: "inv_runtime",
@@ -202,7 +207,7 @@ describe("registerAgentPayMcpTools", () => {
         destinationTokenSymbol: "USDC",
         amountOut: "10",
         purpose: "design bounty",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         paymentType: "INVOICE_PAYMENT",
       },
       instructionToAgent:
@@ -243,12 +248,12 @@ describe("registerAgentPayMcpTools", () => {
             destinationTokenSymbol: "USDC",
             amountOut: "0.01",
             purpose: "x402 payment for Market API: Premium market data",
-            sourceTokenSymbol: "USDT",
+            sourceTokenSymbol: "USDT0",
             paymentType: "X402_PAYMENT",
           },
           standardX402SignatureRequired: true,
           instructionToAgent:
-            "Review the x402 requirement with the user. AgentPay can prepare the stablecoin transfer with paymentInput, but standard x402 exact endpoints still require a PAYMENT-SIGNATURE payload from an x402-capable signer.",
+            "Review the x402 requirement with the user. Prepare payment with paymentInput, preserve paymentType: X402_PAYMENT, execute only after exact approval, track until COMPLETED, then call retry_x402_request with the original PAYMENT-REQUIRED response and paymentIntentId.",
         };
       },
     });
@@ -279,7 +284,7 @@ describe("registerAgentPayMcpTools", () => {
     });
 
     assert.equal(x402Inputs.length, 1);
-    assert.equal((x402Inputs[0] as { sourceTokenSymbol: string }).sourceTokenSymbol, "USDT");
+    assert.equal((x402Inputs[0] as { sourceTokenSymbol: string }).sourceTokenSymbol, "USDT0");
     assert.deepEqual((result as { structuredContent: unknown }).structuredContent, {
       status: "PARSED",
       x402Version: 2,
@@ -307,12 +312,72 @@ describe("registerAgentPayMcpTools", () => {
         destinationTokenSymbol: "USDC",
         amountOut: "0.01",
         purpose: "x402 payment for Market API: Premium market data",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         paymentType: "X402_PAYMENT",
       },
       standardX402SignatureRequired: true,
       instructionToAgent:
-        "Review the x402 requirement with the user. AgentPay can prepare the stablecoin transfer with paymentInput, but standard x402 exact endpoints still require a PAYMENT-SIGNATURE payload from an x402-capable signer.",
+        "Review the x402 requirement with the user. Prepare payment with paymentInput, preserve paymentType: X402_PAYMENT, execute only after exact approval, track until COMPLETED, then call retry_x402_request with the original PAYMENT-REQUIRED response and paymentIntentId.",
+    });
+  });
+
+  it("registers retry_x402_request and returns protected resource content", async () => {
+    const server = new FakeMcpServer();
+    const retryInputs: unknown[] = [];
+    const runtime = createRuntime({
+      async retryX402Request(input) {
+        retryInputs.push(input);
+        return {
+          status: "RESOURCE_FETCHED",
+          paymentIntentId: "pay_x402",
+          requestUrl: "https://api.example.com/premium-data",
+          method: "GET",
+          httpStatus: 200,
+          paymentHeader: "eyJzY2hlbWUiOiJhZ2VudHBheS1yZWNlaXB0In0",
+          paymentResponse: "settled",
+          bodyText: "{\"ok\":true}",
+          instructionToAgent: "x402 retry succeeded. Return the protected resource response to the user.",
+        };
+      },
+    });
+
+    registerAgentPayMcpTools(server, runtime);
+    const registered = server.tools.get("retry_x402_request");
+
+    assert.ok(registered);
+    assert.match(String(registered.metadata.description), /Retry an x402-protected HTTP request/);
+
+    const result = await registered.handler({
+      paymentRequired: {
+        x402Version: 2,
+        resource: {
+          url: "https://api.example.com/premium-data",
+        },
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:8453",
+            amount: "10000",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            payTo: "0x1111111111111111111111111111111111111111",
+            maxTimeoutSeconds: 60,
+          },
+        ],
+      },
+      paymentIntentId: "pay_x402",
+    });
+
+    assert.equal(retryInputs.length, 1);
+    assert.deepEqual((result as { structuredContent: unknown }).structuredContent, {
+      status: "RESOURCE_FETCHED",
+      paymentIntentId: "pay_x402",
+      requestUrl: "https://api.example.com/premium-data",
+      method: "GET",
+      httpStatus: 200,
+      paymentHeader: "eyJzY2hlbWUiOiJhZ2VudHBheS1yZWNlaXB0In0",
+      paymentResponse: "settled",
+      bodyText: "{\"ok\":true}",
+      instructionToAgent: "x402 retry succeeded. Return the protected resource response to the user.",
     });
   });
 
@@ -330,9 +395,9 @@ describe("registerAgentPayMcpTools", () => {
             pay: "10 USDC",
             recipientAddress: "0x1111111111111111111111111111111111111111",
             destinationChain: "Base",
-            sourceSpend: "10.2 USDT",
+            sourceSpend: "10.2 USDT0",
             maxNativeFee: "2500000000000000",
-            maxNativeFeeDisplay: "0.0025 BNB",
+            maxNativeFeeDisplay: "0.0025 OKB",
             routeProvider: "LI.FI",
             routeSummary: "LI.FI route prepared.",
             routeTarget: "0x7777777777777777777777777777777777777777",
@@ -370,7 +435,7 @@ describe("registerAgentPayMcpTools", () => {
         destinationTokenSymbol: "USDC",
         amountOut: "10",
         purpose: "design bounty",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         paymentType: "WALLET_PAYMENT",
       },
     ]);
@@ -389,9 +454,9 @@ describe("registerAgentPayMcpTools", () => {
           pay: "10 USDC",
           recipientAddress: "0x1111111111111111111111111111111111111111",
           destinationChain: "Base",
-          sourceSpend: "10.2 USDT",
+          sourceSpend: "10.2 USDT0",
           maxNativeFee: "2500000000000000",
-          maxNativeFeeDisplay: "0.0025 BNB",
+          maxNativeFeeDisplay: "0.0025 OKB",
           routeProvider: "LI.FI",
           routeSummary: "LI.FI route prepared.",
           routeTarget: "0x7777777777777777777777777777777777777777",
@@ -419,9 +484,9 @@ describe("registerAgentPayMcpTools", () => {
           approvalPhrase: "APPROVE pay_contract",
           summary: {
             targetAddress: "0x8888888888888888888888888888888888888888",
-            chainId: 56,
-            chain: "BNB Chain",
-            sourceTokenSymbol: "USDT",
+            chainId: 196,
+            chain: "X Layer",
+            sourceTokenSymbol: "USDT0",
             maxTokenSpend: "7.5",
             maxNativeFee: "0",
             callDataHash: "0x40eed0325a12c6c6af8db2ea05450bfe21d6343b6fe955bff65045b67d9d5fe6",
@@ -452,7 +517,7 @@ describe("registerAgentPayMcpTools", () => {
       {
         targetAddress: "0x8888888888888888888888888888888888888888",
         callData: "0xaabbccdd",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         maxTokenSpend: "7.5",
         maxNativeFee: "0",
         purpose: "mint access pass",
@@ -464,9 +529,9 @@ describe("registerAgentPayMcpTools", () => {
       approvalPhrase: "APPROVE pay_contract",
       summary: {
         targetAddress: "0x8888888888888888888888888888888888888888",
-        chainId: 56,
-        chain: "BNB Chain",
-        sourceTokenSymbol: "USDT",
+        chainId: 196,
+        chain: "X Layer",
+        sourceTokenSymbol: "USDT0",
         maxTokenSpend: "7.5",
         maxNativeFee: "0",
         callDataHash: "0x40eed0325a12c6c6af8db2ea05450bfe21d6343b6fe955bff65045b67d9d5fe6",
@@ -488,24 +553,24 @@ describe("registerAgentPayMcpTools", () => {
         return {
           paymentType: "SWAP_BRIDGE_PAY",
           routeProvider: "LI.FI",
-          sourceChainId: 56,
-          sourceChain: "BNB Chain",
+          sourceChainId: 196,
+          sourceChain: "X Layer",
           destinationChainId: 8453,
           destinationChain: "Base",
-          sourceTokenSymbol: "USDT",
+          sourceTokenSymbol: "USDT0",
           sourceTokenAddress: "0x5555555555555555555555555555555555555555",
           destinationTokenSymbol: "USDC",
           destinationTokenAddress: "0x6666666666666666666666666666666666666666",
           amountOut: "10",
           maxAmountIn: "10.2",
           maxNativeFee: "0",
-          maxNativeFeeDisplay: "0 BNB",
+          maxNativeFeeDisplay: "0 OKB",
           routeTarget: "0x7777777777777777777777777777777777777777",
           routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
           requiresRouteTargetAllowlist: true,
           estimatedFee: "0.12",
           estimatedEtaSeconds: 120,
-          routeSummary: "Spend 10.2 USDT for an estimated 10.17 USDC.",
+          routeSummary: "Spend 10.2 USDT0 for an estimated 10.17 USDC.",
         };
       },
     });
@@ -529,30 +594,30 @@ describe("registerAgentPayMcpTools", () => {
         destinationChainId: 8453,
         destinationTokenSymbol: "USDC",
         amountOut: "10",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
       },
     ]);
     assert.deepEqual((result as { structuredContent: unknown }).structuredContent, {
       paymentType: "SWAP_BRIDGE_PAY",
       routeProvider: "LI.FI",
-      sourceChainId: 56,
-      sourceChain: "BNB Chain",
+      sourceChainId: 196,
+      sourceChain: "X Layer",
       destinationChainId: 8453,
       destinationChain: "Base",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       sourceTokenAddress: "0x5555555555555555555555555555555555555555",
       destinationTokenSymbol: "USDC",
       destinationTokenAddress: "0x6666666666666666666666666666666666666666",
       amountOut: "10",
       maxAmountIn: "10.2",
       maxNativeFee: "0",
-      maxNativeFeeDisplay: "0 BNB",
+      maxNativeFeeDisplay: "0 OKB",
       routeTarget: "0x7777777777777777777777777777777777777777",
       routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
       requiresRouteTargetAllowlist: true,
       estimatedFee: "0.12",
       estimatedEtaSeconds: 120,
-      routeSummary: "Spend 10.2 USDT for an estimated 10.17 USDC.",
+      routeSummary: "Spend 10.2 USDT0 for an estimated 10.17 USDC.",
     });
   });
 
@@ -569,17 +634,17 @@ describe("registerAgentPayMcpTools", () => {
           allowed: true,
           ownerAddress: "0x2222222222222222222222222222222222222222",
           accountAddress: "0x3333333333333333333333333333333333333333",
-          chainId: 56,
-          chain: "BNB Chain",
+          chainId: 196,
+          chain: "X Layer",
           transaction: {
             from: "0x2222222222222222222222222222222222222222",
             to: "0x3333333333333333333333333333333333333333",
             value: "0",
-            chainId: 56,
+            chainId: 196,
             data: "0xabcdef",
           },
           instructionToAgent:
-            "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on BNB Chain. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
+            "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on X Layer. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
         };
       },
     });
@@ -607,17 +672,17 @@ describe("registerAgentPayMcpTools", () => {
       allowed: true,
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       transaction: {
         from: "0x2222222222222222222222222222222222222222",
         to: "0x3333333333333333333333333333333333333333",
         value: "0",
-        chainId: 56,
+        chainId: 196,
         data: "0xabcdef",
       },
       instructionToAgent:
-        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on BNB Chain. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
+        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this transaction on X Layer. It allows route target 0x7777777777777777777777777777777777777777 and does not approve any payment.",
     });
   });
 
@@ -633,10 +698,10 @@ describe("registerAgentPayMcpTools", () => {
           routeTargetAllowed: false,
           ownerAddress: "0x2222222222222222222222222222222222222222",
           accountAddress: "0x3333333333333333333333333333333333333333",
-          chainId: 56,
-          chain: "BNB Chain",
+          chainId: 196,
+          chain: "X Layer",
           instructionToAgent:
-            "Route target 0x7777777777777777777777777777777777777777 is not allowlisted on BNB Chain; call prepare_route_target_allowance before execution.",
+            "Route target 0x7777777777777777777777777777777777777777 is not allowlisted on X Layer; call prepare_route_target_allowance before execution.",
         };
       },
     });
@@ -662,10 +727,10 @@ describe("registerAgentPayMcpTools", () => {
       routeTargetAllowed: false,
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       instructionToAgent:
-        "Route target 0x7777777777777777777777777777777777777777 is not allowlisted on BNB Chain; call prepare_route_target_allowance before execution.",
+        "Route target 0x7777777777777777777777777777777777777777 is not allowlisted on X Layer; call prepare_route_target_allowance before execution.",
     });
   });
 
@@ -680,17 +745,17 @@ describe("registerAgentPayMcpTools", () => {
           action: "PAUSE",
           ownerAddress: "0x2222222222222222222222222222222222222222",
           accountAddress: "0x3333333333333333333333333333333333333333",
-          chainId: 56,
-          chain: "BNB Chain",
+          chainId: 196,
+          chain: "X Layer",
           transaction: {
             from: "0x2222222222222222222222222222222222222222",
             to: "0x3333333333333333333333333333333333333333",
             value: "0",
-            chainId: 56,
+            chainId: 196,
             data: "0xpause",
           },
           instructionToAgent:
-            "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this PAUSE transaction on BNB Chain. This is an owner admin action and does not approve any payment.",
+            "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this PAUSE transaction on X Layer. This is an owner admin action and does not approve any payment.",
         };
       },
     });
@@ -709,17 +774,17 @@ describe("registerAgentPayMcpTools", () => {
       action: "PAUSE",
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       transaction: {
         from: "0x2222222222222222222222222222222222222222",
         to: "0x3333333333333333333333333333333333333333",
         value: "0",
-        chainId: 56,
+        chainId: 196,
         data: "0xpause",
       },
       instructionToAgent:
-        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this PAUSE transaction on BNB Chain. This is an owner admin action and does not approve any payment.",
+        "Ask the owner wallet 0x2222222222222222222222222222222222222222 to submit this PAUSE transaction on X Layer. This is an owner admin action and does not approve any payment.",
     });
   });
 
@@ -864,6 +929,9 @@ function createRuntime(overrides: Partial<AgentPayRuntime>): AgentPayRuntime {
     },
     async parseX402PaymentRequired() {
       throw new Error("parseX402PaymentRequired was not expected.");
+    },
+    async retryX402Request() {
+      throw new Error("retryX402Request was not expected.");
     },
     async prepareContractCall() {
       throw new Error("prepareContractCall was not expected.");

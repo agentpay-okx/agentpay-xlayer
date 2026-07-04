@@ -11,7 +11,7 @@ npx @agentpay-ai/agentpay mcp
 
 ## Tools
 
-The server exposes tools for wallet setup, balance checks, LI.FI route quotes, payment preparation, exact approval execution, payment tracking, invoice parsing, x402 parsing, route target allowance, and account admin transactions.
+The server exposes tools for wallet setup, balance checks, LI.FI route quotes, payment preparation, exact approval execution, payment tracking, invoice parsing, x402 parsing plus receipt-proof retry, route target allowance, and account admin transactions.
 
 ## Programmatic Usage
 
@@ -23,6 +23,6 @@ await startAgentPayMcpServer();
 
 ## Configuration
 
-Provide runtime config through `AGENTPAY_CONFIG` or environment variables such as `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BNB_RPC_URL`, `EXECUTOR_PRIVATE_KEY`, `SETUP_WEB_URL`, and `LIFI_API_KEY`.
+Provide runtime config through `AGENTPAY_CONFIG` or environment variables such as `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XLAYER_RPC_URL`, `XLAYER_MAINNET_RPC_URL`, `XLAYER_TESTNET_RPC_URL`, `EXECUTOR_PRIVATE_KEY`, `SETUP_WEB_URL`, and `LIFI_API_KEY`.
 
 Keep service role keys and executor private keys on the server side only.

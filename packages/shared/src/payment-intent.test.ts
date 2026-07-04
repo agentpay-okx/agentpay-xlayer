@@ -13,7 +13,7 @@ import {
 } from "./index.ts";
 
 describe("quotePaymentRouteInputSchema", () => {
-  it("defaults sourceTokenSymbol to USDT without requiring a purpose", () => {
+  it("defaults sourceTokenSymbol to X Layer USDt0 without requiring a purpose", () => {
     const parsed = quotePaymentRouteInputSchema.parse({
       recipientAddress: "0x1111111111111111111111111111111111111111",
       destinationChainId: 8453,
@@ -26,7 +26,7 @@ describe("quotePaymentRouteInputSchema", () => {
       destinationChainId: 8453,
       destinationTokenSymbol: "USDC",
       amountOut: "10",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
     });
   });
 });
@@ -41,7 +41,7 @@ describe("preparePaymentInputSchema", () => {
       purpose: " design bounty ",
     });
 
-    assert.equal(parsed.sourceTokenSymbol, "USDT");
+    assert.equal(parsed.sourceTokenSymbol, "USDT0");
     assert.equal(parsed.paymentType, "WALLET_PAYMENT");
     assert.equal(parsed.purpose, "design bounty");
   });
@@ -99,19 +99,19 @@ describe("preparePaymentInputSchema", () => {
 
 describe("direct payment route helpers", () => {
   it("builds direct quotes from chain token metadata", () => {
-    assert.equal(isDirectPaymentRoute(56, 56, "USDT", "USDT"), true);
-    assert.equal(isDirectPaymentRoute(56, 8453, "USDT", "USDT"), false);
+    assert.equal(isDirectPaymentRoute(196, 196, "USDT0", "USDT0"), true);
+    assert.equal(isDirectPaymentRoute(196, 8453, "USDT0", "USDT0"), false);
 
-    assert.deepEqual(createDirectPaymentRouteQuote({ chainId: 56, tokenSymbol: "USDT", amountOut: "10" }), {
+    assert.deepEqual(createDirectPaymentRouteQuote({ chainId: 196, tokenSymbol: "USDT0", amountOut: "10" }), {
       routeProvider: "DIRECT",
-      sourceTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-      destinationTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+      sourceTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      destinationTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
       maxAmountIn: "10",
       maxNativeFee: "0",
       routeTarget: "0x0000000000000000000000000000000000000000",
       routeCalldata: "0x",
       routeCalldataHash: "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-      routeSummary: "Direct 10 USDT transfer on BNB Chain.",
+      routeSummary: "Direct 10 USDT0 transfer on X Layer.",
       estimatedFee: "0",
       estimatedEtaSeconds: 0,
     });

@@ -36,6 +36,7 @@ describe("createContractFactoryAgentPayAccountDeployer", () => {
         "0x6666666666666666666666666666666666666666",
       ],
       initialAllowedRouteTargets: ["0x7777777777777777777777777777777777777777"],
+      homeChainId: 1952,
     });
 
     assert.deepEqual(calls, [

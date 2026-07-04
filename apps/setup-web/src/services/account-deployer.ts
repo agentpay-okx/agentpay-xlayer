@@ -25,6 +25,7 @@ export interface AgentPayAccountContractFactory {
 
 export interface EthersAgentPayAccountDeployerConfig {
   rpcUrl: string;
+  rpcUrls?: Partial<Record<number, string>>;
   deployerPrivateKey: string;
   bytecode: string;
 }
@@ -55,9 +56,33 @@ export function createContractFactoryAgentPayAccountDeployer(
 export function createEthersAgentPayAccountDeployer(
   config: EthersAgentPayAccountDeployerConfig,
 ): AgentPayAccountDeployer {
-  const provider = new JsonRpcProvider(config.rpcUrl);
-  const signer = new Wallet(config.deployerPrivateKey, provider);
-  const factory = new ContractFactory(agentPayAccountConstructorAbi, config.bytecode, signer);
+  const factories = new Map<string, AgentPayAccountContractFactory>();
 
-  return createContractFactoryAgentPayAccountDeployer(factory as unknown as AgentPayAccountContractFactory);
+  function getFactory(homeChainId: number): AgentPayAccountContractFactory {
+    const rpcUrl = resolveSetupRpcUrlForChain(config, homeChainId);
+    const existing = factories.get(rpcUrl);
+
+    if (existing) {
+      return existing;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const signer = new Wallet(config.deployerPrivateKey, provider);
+    const factory = new ContractFactory(agentPayAccountConstructorAbi, config.bytecode, signer) as unknown as AgentPayAccountContractFactory;
+    factories.set(rpcUrl, factory);
+    return factory;
+  }
+
+  return {
+    async deployAgentPayAccount(request) {
+      return createContractFactoryAgentPayAccountDeployer(getFactory(request.homeChainId)).deployAgentPayAccount(request);
+    },
+  };
+}
+
+export function resolveSetupRpcUrlForChain(
+  config: Pick<EthersAgentPayAccountDeployerConfig, "rpcUrl" | "rpcUrls">,
+  chainId: number,
+): string {
+  return config.rpcUrls?.[chainId] ?? config.rpcUrl;
 }

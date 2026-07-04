@@ -24,6 +24,7 @@ describe("createAgentPayMcpServer", () => {
       "get_balance",
       "parse_invoice_payment",
       "parse_x402_payment_required",
+      "retry_x402_request",
       "prepare_contract_call",
       "quote_payment_route",
       "check_route_target_allowance",
@@ -49,7 +50,7 @@ describe("startAgentPayMcpServer", () => {
       env: {
         SUPABASE_URL: "https://agentpay.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-        BNB_RPC_URL: "https://bsc-dataseed.binance.org",
+        XLAYER_RPC_URL: "https://rpc.xlayer.tech",
         EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
       },
       createRuntime(config) {
@@ -73,7 +74,7 @@ describe("startAgentPayMcpServer", () => {
       {
         supabaseUrl: "https://agentpay.supabase.co",
         serviceRoleKey: "service-role-key",
-        bnbRpcUrl: "https://bsc-dataseed.binance.org",
+        xlayerRpcUrl: "https://rpc.xlayer.tech",
         executorPrivateKey: `0x${"1".repeat(64)}`,
       },
     ]);
@@ -100,6 +101,9 @@ function createRuntime(): AgentPayRuntime {
     },
     async parseX402PaymentRequired() {
       throw new Error("parseX402PaymentRequired was not expected.");
+    },
+    async retryX402Request() {
+      throw new Error("retryX402Request was not expected.");
     },
     async prepareContractCall() {
       throw new Error("prepareContractCall was not expected.");

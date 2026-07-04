@@ -2,11 +2,11 @@ import { z } from "zod";
 
 import { getChainName } from "./chains.ts";
 import { preparePaymentInputSchema } from "./payment-intent.ts";
-import { stableTokenSymbolSchema } from "./tokens.ts";
+import { stableTokenSymbolSchema, type StableTokenSymbol } from "./tokens.ts";
 
 export const parseInvoicePaymentInputSchema = z.object({
   invoice: z.string().trim().min(1),
-  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT"),
+  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT0"),
 });
 
 export type ParseInvoicePaymentInput = z.input<typeof parseInvoicePaymentInputSchema>;
@@ -16,10 +16,10 @@ export interface ParsedInvoicePayment {
   recipientAddress: string;
   destinationChainId: number;
   destinationChain: string;
-  destinationTokenSymbol: "USDC" | "USDT";
+  destinationTokenSymbol: StableTokenSymbol;
   amountOut: string;
   purpose: string;
-  sourceTokenSymbol: "USDC" | "USDT";
+  sourceTokenSymbol: StableTokenSymbol;
   paymentType: "INVOICE_PAYMENT";
 }
 
@@ -101,30 +101,30 @@ function parseDestinationChainId(value: string | undefined): number | undefined 
 
   const normalized = normalizeKey(value);
   const knownChains: Record<string, number> = {
+    xlayer: 196,
+    xlayermainnet: 196,
+    xlayertestnet: 1952,
     base: 8453,
-    bnbchain: 56,
-    bnb: 56,
-    bsc: 56,
   };
 
   return knownChains[normalized];
 }
 
-function parseToken(value: string | undefined): "USDC" | "USDT" | undefined {
+function parseToken(value: string | undefined): StableTokenSymbol | undefined {
   if (!value) {
     return undefined;
   }
 
-  return stableTokenSymbolSchema.parse(value.trim().toUpperCase());
+  return stableTokenSymbolSchema.parse(normalizeTokenSymbol(value));
 }
 
 function parsePaymentFields(candidate: {
   recipientAddress: string | undefined;
   destinationChainId: number | undefined;
-  destinationTokenSymbol: "USDC" | "USDT" | undefined;
+  destinationTokenSymbol: StableTokenSymbol | undefined;
   amountOut: string | undefined;
   purpose: string | undefined;
-  sourceTokenSymbol: "USDC" | "USDT" | undefined;
+  sourceTokenSymbol: StableTokenSymbol | undefined;
 }) {
   const parsed = preparePaymentInputSchema.safeParse(candidate);
 
@@ -141,4 +141,8 @@ function invoicePurpose(invoiceId: string | undefined): string | undefined {
 
 function normalizeKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeTokenSymbol(value: string): string {
+  return value.trim().toUpperCase().replace("USD₮0", "USDT0");
 }

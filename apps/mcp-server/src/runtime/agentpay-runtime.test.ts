@@ -18,31 +18,37 @@ describe("parseAgentPayEnv", () => {
     const config = parseAgentPayEnv({
       SUPABASE_URL: " https://agentpay.supabase.co ",
       SUPABASE_SERVICE_ROLE_KEY: " service-role-key ",
-      BNB_RPC_URL: " https://bsc-dataseed.binance.org ",
+      XLAYER_RPC_URL: " https://rpc.xlayer.tech ",
+      XLAYER_MAINNET_RPC_URL: " https://mainnet.xlayer.tech ",
+      XLAYER_TESTNET_RPC_URL: " https://testnet.xlayer.tech ",
       EXECUTOR_PRIVATE_KEY: ` ${validPrivateKey} `,
       LIFI_API_KEY: " lifi-key ",
       LIFI_BASE_URL: " https://li.quest ",
       SETUP_WEB_URL: " https://setup.agentpay.dev/setup ",
-      AGENTPAY_HOME_CHAIN_ID: " 97 ",
-      AGENTPAY_BNB_TESTNET_USDC_ADDRESS: " 0x1111111111111111111111111111111111111111 ",
-      AGENTPAY_BNB_TESTNET_USDT_ADDRESS: " 0x2222222222222222222222222222222222222222 ",
+      AGENTPAY_HOME_CHAIN_ID: " 1952 ",
+      AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS: " 0x1111111111111111111111111111111111111111 ",
+      AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS: " 0x2222222222222222222222222222222222222222 ",
     });
 
     assert.deepEqual(config, {
       supabaseUrl: "https://agentpay.supabase.co",
       serviceRoleKey: "service-role-key",
-      bnbRpcUrl: "https://bsc-dataseed.binance.org",
+      xlayerRpcUrl: "https://rpc.xlayer.tech",
+      xlayerRpcUrls: {
+        196: "https://mainnet.xlayer.tech",
+        1952: "https://testnet.xlayer.tech",
+      },
       executorPrivateKey: validPrivateKey,
       lifiApiKey: "lifi-key",
       lifiBaseUrl: "https://li.quest",
       setupWebUrl: "https://setup.agentpay.dev/setup",
-      homeChainId: 97,
+      homeChainId: 1952,
       stableTokenOverrides: {
-        97: {
+        1952: {
           USDC: {
             address: "0x1111111111111111111111111111111111111111",
           },
-          USDT: {
+          USDT0: {
             address: "0x2222222222222222222222222222222222222222",
           },
         },
@@ -58,18 +64,22 @@ describe("parseAgentPayEnv", () => {
         parseAgentPayEnv({
           SUPABASE_URL: "notaurl",
           SUPABASE_SERVICE_ROLE_KEY: sensitiveFixtureValue,
-          BNB_RPC_URL: "",
+          XLAYER_RPC_URL: "",
+          XLAYER_MAINNET_RPC_URL: "mainnet-rpc",
+          XLAYER_TESTNET_RPC_URL: "testnet-rpc",
           EXECUTOR_PRIVATE_KEY: "0xabc123",
           AGENTPAY_HOME_CHAIN_ID: "98",
-          AGENTPAY_BNB_TESTNET_USDC_ADDRESS: "not-an-address",
+          AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS: "not-an-address",
         }),
       (error) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /BNB_RPC_URL/);
+        assert.match(error.message, /XLAYER_RPC_URL/);
+        assert.match(error.message, /XLAYER_MAINNET_RPC_URL/);
+        assert.match(error.message, /XLAYER_TESTNET_RPC_URL/);
         assert.match(error.message, /SUPABASE_URL/);
         assert.match(error.message, /EXECUTOR_PRIVATE_KEY/);
         assert.match(error.message, /AGENTPAY_HOME_CHAIN_ID/);
-        assert.match(error.message, /AGENTPAY_BNB_TESTNET_USDC_ADDRESS/);
+        assert.match(error.message, /AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS/);
         assert.doesNotMatch(error.message, new RegExp(sensitiveFixtureValue));
         assert.doesNotMatch(error.message, /0xabc123/);
         return true;
@@ -93,6 +103,53 @@ describe("createAgentPayRuntime", () => {
     const createdIntents: PaymentIntentRecord[] = [];
     const createdSetups: SetupIntentRecord[] = [];
     const calls: Array<[string, unknown]> = [];
+    const x402PaymentRequired = {
+      x402Version: 2,
+      resource: {
+        url: "https://api.example.com/premium-data",
+        description: "Premium market data",
+        serviceName: "Market API",
+      },
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:8453",
+          amount: "10000",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          payTo: "0x1111111111111111111111111111111111111111",
+          maxTimeoutSeconds: 60,
+        },
+      ],
+    };
+    const completedX402Intent: PaymentIntentRecord = {
+      id: "pay_x402",
+      accountAddress: "0x3333333333333333333333333333333333333333",
+      ownerAddress: "0x2222222222222222222222222222222222222222",
+      status: "COMPLETED",
+      paymentType: "X402_PAYMENT",
+      sourceChainId: 196,
+      destinationChainId: 8453,
+      sourceTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      sourceTokenSymbol: "USDT0",
+      destinationTokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      destinationTokenSymbol: "USDC",
+      recipientAddress: "0x1111111111111111111111111111111111111111",
+      amountOut: "0.01",
+      maxAmountIn: "0.011",
+      maxNativeFee: "0",
+      routeProvider: "LI.FI",
+      routeTarget: "0x7777777777777777777777777777777777777777",
+      routeCalldata: "0x1234",
+      routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
+      routeSummary: "Route to Base.",
+      nonce: "43",
+      deadline: "2026-07-02T14:45:00.000Z",
+      purpose: "x402 payment for Market API: Premium market data",
+      approvalPhrase: "APPROVE pay_x402",
+      sourceTxHash: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      destinationTxHash: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      completedAt: "2026-07-02T14:31:00.000Z",
+    };
     const routeQuote: RouteQuote = {
       routeProvider: "LI.FI",
       sourceTokenAddress: "0x5555555555555555555555555555555555555555",
@@ -115,7 +172,7 @@ describe("createAgentPayRuntime", () => {
               return {
                 ownerAddress: "0x2222222222222222222222222222222222222222",
                 accountAddress: "0x3333333333333333333333333333333333333333",
-                homeChainId: 56,
+                homeChainId: 196,
                 executorAddress: "0x4444444444444444444444444444444444444444",
                 status: "ACTIVE",
               };
@@ -135,6 +192,9 @@ describe("createAgentPayRuntime", () => {
               createdIntents.push(intent);
             },
             async getPaymentIntent(paymentIntentId) {
+              if (paymentIntentId === "pay_x402") {
+                return completedX402Intent;
+              }
               assert.equal(paymentIntentId, "pay_runtime");
               return createdIntents.at(0) ?? null;
             },
@@ -270,7 +330,11 @@ describe("createAgentPayRuntime", () => {
       {
         supabaseUrl: "https://agentpay.supabase.co",
         serviceRoleKey: "service-role-key",
-        bnbRpcUrl: "https://bsc-dataseed.binance.org",
+        xlayerRpcUrl: "https://rpc.xlayer.tech",
+        xlayerRpcUrls: {
+          196: "https://mainnet.xlayer.tech",
+          1952: "https://testnet.xlayer.tech",
+        },
         executorPrivateKey: validPrivateKey,
         lifiApiKey: "lifi-key",
         setupWebUrl: "https://setup.agentpay.dev/setup",
@@ -281,13 +345,29 @@ describe("createAgentPayRuntime", () => {
         createNonce: () => "42",
         createSetupIntentId: () => "setup_runtime",
         executorAddress: "0x4444444444444444444444444444444444444444",
+        x402Fetch: async (url, init) => {
+          calls.push([
+            "x402Fetch",
+            {
+              url: String(url),
+              method: init?.method,
+              headers: init?.headers,
+            },
+          ]);
+          return new Response("premium payload", {
+            status: 200,
+            headers: {
+              "x-payment-response": "settled",
+            },
+          });
+        },
         factories,
       },
     );
 
     const setup = await runtime.prepareWalletCreation({});
     const wallet = await runtime.getAgentWallet({});
-    const balance = await runtime.getBalance({ tokenSymbols: ["USDT"] });
+    const balance = await runtime.getBalance({ tokenSymbols: ["USDT0"] });
     const invoice = await runtime.parseInvoicePayment({
       invoice: [
         "Invoice ID: inv_runtime",
@@ -299,31 +379,18 @@ describe("createAgentPayRuntime", () => {
       ].join("\n"),
     });
     const x402 = await runtime.parseX402PaymentRequired({
-      paymentRequired: JSON.stringify({
-        x402Version: 2,
-        resource: {
-          url: "https://api.example.com/premium-data",
-          description: "Premium market data",
-          serviceName: "Market API",
-        },
-        accepts: [
-          {
-            scheme: "exact",
-            network: "eip155:8453",
-            amount: "10000",
-            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-            payTo: "0x1111111111111111111111111111111111111111",
-            maxTimeoutSeconds: 60,
-          },
-        ],
-      }),
+      paymentRequired: JSON.stringify(x402PaymentRequired),
+    });
+    const retriedX402 = await runtime.retryX402Request({
+      paymentRequired: x402PaymentRequired,
+      paymentIntentId: "pay_x402",
     });
     const quoted = await runtime.quotePaymentRoute({
       recipientAddress: "0x1111111111111111111111111111111111111111",
       destinationChainId: 8453,
       destinationTokenSymbol: "USDC",
       amountOut: "10",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
     });
     const allowance = await runtime.prepareRouteTargetAllowance({
       routeTarget: "0x7777777777777777777777777777777777777777",
@@ -338,7 +405,7 @@ describe("createAgentPayRuntime", () => {
       destinationTokenSymbol: "USDC",
       amountOut: "10",
       purpose: "design bounty",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
     });
 
     const executed = await runtime.executePayment({
@@ -363,18 +430,18 @@ describe("createAgentPayRuntime", () => {
       status: "ACTIVE",
       accountAddress: "0x3333333333333333333333333333333333333333",
       ownerAddress: "0x2222222222222222222222222222222222222222",
-      chainId: 56,
-      chain: "BNB Chain",
+      chainId: 196,
+      chain: "X Layer",
       balances: [
         {
-          tokenSymbol: "USDT",
-          tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+          tokenSymbol: "USDT0",
+          tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
           amount: "12.5",
-          decimals: 18,
+          decimals: 6,
         },
       ],
       nativeBalance: {
-        tokenSymbol: "BNB",
+        tokenSymbol: "OKB",
         tokenAddress: "native",
         amount: "0.03",
         decimals: 18,
@@ -387,6 +454,11 @@ describe("createAgentPayRuntime", () => {
     assert.equal(x402.resource.serviceName, "Market API");
     assert.equal(x402.paymentInput.destinationChain, "Base");
     assert.equal(x402.standardX402SignatureRequired, true);
+    assert.equal(retriedX402.status, "RESOURCE_FETCHED");
+    assert.equal(retriedX402.httpStatus, 200);
+    assert.equal(retriedX402.paymentResponse, "settled");
+    assert.equal(retriedX402.bodyText, "premium payload");
+    assert.equal((calls.find(([name]) => name === "x402Fetch")?.[1] as { method: string }).method, "GET");
     assert.equal(contractCall.paymentIntentId, "pay_runtime");
     assert.equal(contractCall.summary.callDataHash, "0x40eed0325a12c6c6af8db2ea05450bfe21d6343b6fe955bff65045b67d9d5fe6");
     assert.equal(quoted.paymentType, "SWAP_BRIDGE_PAY");
@@ -432,7 +504,11 @@ describe("createAgentPayRuntime", () => {
       [
         "ethers",
         {
-          rpcUrl: "https://bsc-dataseed.binance.org",
+          rpcUrl: "https://rpc.xlayer.tech",
+          rpcUrls: {
+            196: "https://mainnet.xlayer.tech",
+            1952: "https://testnet.xlayer.tech",
+          },
           executorPrivateKey: validPrivateKey,
         },
       ],

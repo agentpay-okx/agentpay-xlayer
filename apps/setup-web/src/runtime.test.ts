@@ -16,7 +16,9 @@ describe("parseSetupWebEnv", () => {
     const config = parseSetupWebEnv({
       SUPABASE_URL: " https://agentpay.supabase.co ",
       SUPABASE_SERVICE_ROLE_KEY: " service-role-key ",
-      BNB_RPC_URL: " https://bsc-dataseed.binance.org ",
+      XLAYER_RPC_URL: " https://rpc.xlayer.tech ",
+      XLAYER_MAINNET_RPC_URL: " https://mainnet.xlayer.tech ",
+      XLAYER_TESTNET_RPC_URL: " https://testnet.xlayer.tech ",
       SETUP_DEPLOYER_PRIVATE_KEY: ` ${validPrivateKey} `,
       AGENTPAY_ACCOUNT_BYTECODE: " 0x60006000 ",
       SETUP_WEB_PORT: " 3333 ",
@@ -25,7 +27,11 @@ describe("parseSetupWebEnv", () => {
     assert.deepEqual(config, {
       supabaseUrl: "https://agentpay.supabase.co",
       serviceRoleKey: "service-role-key",
-      bnbRpcUrl: "https://bsc-dataseed.binance.org",
+      xlayerRpcUrl: "https://rpc.xlayer.tech",
+      xlayerRpcUrls: {
+        196: "https://mainnet.xlayer.tech",
+        1952: "https://testnet.xlayer.tech",
+      },
       setupDeployerPrivateKey: validPrivateKey,
       agentPayAccountBytecode: "0x60006000",
       setupWebPort: 3333,
@@ -41,7 +47,7 @@ describe("parseSetupWebEnv", () => {
       const config = parseSetupWebEnv({
         SUPABASE_URL: "https://agentpay.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-        BNB_RPC_URL: "https://bsc-dataseed.binance.org",
+        XLAYER_RPC_URL: "https://rpc.xlayer.tech",
         SETUP_DEPLOYER_PRIVATE_KEY: validPrivateKey,
         AGENTPAY_ACCOUNT_BYTECODE_PATH: bytecodePath,
       });
@@ -56,7 +62,7 @@ describe("parseSetupWebEnv", () => {
     const config = parseSetupWebEnv({
       SUPABASE_URL: "https://agentpay.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-      BNB_RPC_URL: "https://bsc-dataseed.binance.org",
+      XLAYER_RPC_URL: "https://rpc.xlayer.tech",
       SETUP_DEPLOYER_PRIVATE_KEY: validPrivateKey,
       AGENTPAY_ACCOUNT_BYTECODE: "0x60006000",
       AGENTPAY_INITIAL_ROUTE_TARGETS: ` ${routeTarget}, 0x8888888888888888888888888888888888888888 `,
@@ -68,17 +74,29 @@ describe("parseSetupWebEnv", () => {
     ]);
   });
 
-  it("parses BNB Chain testnet as the setup home chain", () => {
+  it("parses X Layer testnet as the setup home chain", () => {
     const config = parseSetupWebEnv({
       SUPABASE_URL: "https://agentpay.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-      BNB_RPC_URL: "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+      XLAYER_RPC_URL: "https://testrpc.xlayer.tech",
       SETUP_DEPLOYER_PRIVATE_KEY: validPrivateKey,
       AGENTPAY_ACCOUNT_BYTECODE: "0x60006000",
-      AGENTPAY_HOME_CHAIN_ID: " 97 ",
+      AGENTPAY_HOME_CHAIN_ID: " 1952 ",
+      AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS: "0x1111111111111111111111111111111111111111",
+      AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS: "0x2222222222222222222222222222222222222222",
     });
 
-    assert.equal(config.homeChainId, 97);
+    assert.equal(config.homeChainId, 1952);
+    assert.deepEqual(config.stableTokenOverrides, {
+      1952: {
+        USDT0: {
+          address: "0x1111111111111111111111111111111111111111",
+        },
+        USDC: {
+          address: "0x2222222222222222222222222222222222222222",
+        },
+      },
+    });
   });
 
   it("merges AGENTPAY_CONFIG JSON with setup web env values", async () => {
@@ -92,7 +110,7 @@ describe("parseSetupWebEnv", () => {
           {
             SUPABASE_URL: "https://agentpay.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY: "config-service-key",
-            BNB_RPC_URL: "https://bsc-dataseed.binance.org",
+            XLAYER_RPC_URL: "https://rpc.xlayer.tech",
             SETUP_DEPLOYER_PRIVATE_KEY: validPrivateKey,
             AGENTPAY_ACCOUNT_BYTECODE: "0x60006000",
           },
@@ -123,7 +141,7 @@ describe("parseSetupWebEnv", () => {
         parseSetupWebEnv({
           SUPABASE_URL: "notaurl",
           SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
-          BNB_RPC_URL: "",
+          XLAYER_RPC_URL: "",
           SETUP_DEPLOYER_PRIVATE_KEY: "secret-private-key",
         AGENTPAY_ACCOUNT_BYTECODE: "nothex",
         AGENTPAY_INITIAL_ROUTE_TARGETS: "0xnot-an-address",
@@ -132,7 +150,7 @@ describe("parseSetupWebEnv", () => {
       (error) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /SUPABASE_URL/);
-        assert.match(error.message, /BNB_RPC_URL/);
+        assert.match(error.message, /XLAYER_RPC_URL/);
         assert.match(error.message, /SETUP_DEPLOYER_PRIVATE_KEY/);
         assert.match(error.message, /AGENTPAY_ACCOUNT_BYTECODE/);
         assert.match(error.message, /AGENTPAY_INITIAL_ROUTE_TARGETS/);
@@ -152,7 +170,7 @@ describe("createSetupWebDependencies", () => {
       {
         supabaseUrl: "https://agentpay.supabase.co",
         serviceRoleKey: "service-role-key",
-        bnbRpcUrl: "https://bsc-dataseed.binance.org",
+        xlayerRpcUrl: "https://rpc.xlayer.tech",
         setupDeployerPrivateKey: validPrivateKey,
         agentPayAccountBytecode: "0x60006000",
       },
@@ -206,7 +224,8 @@ describe("createSetupWebDependencies", () => {
       [
         "deployer",
         {
-          rpcUrl: "https://bsc-dataseed.binance.org",
+          rpcUrl: "https://rpc.xlayer.tech",
+          rpcUrls: undefined,
           deployerPrivateKey: validPrivateKey,
           bytecode: "0x60006000",
         },
@@ -222,7 +241,7 @@ describe("createSetupWebDependencies", () => {
       {
         supabaseUrl: "https://agentpay.supabase.co",
         serviceRoleKey: "service-role-key",
-        bnbRpcUrl: "https://bsc-dataseed.binance.org",
+        xlayerRpcUrl: "https://rpc.xlayer.tech",
         setupDeployerPrivateKey: validPrivateKey,
         agentPayAccountBytecode: "0x60006000",
         initialAllowedRouteTargets: [routeTarget],
@@ -272,16 +291,17 @@ describe("createSetupWebDependencies", () => {
       {
         ownerAddress: owner.address,
         executorAddress: "0x4444444444444444444444444444444444444444",
+        homeChainId: 196,
         initialAllowedTokenAddresses: [
-          "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-          "0x55d398326f99059fF775485246999027B3197955",
+          "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+          "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
         ],
         initialAllowedRouteTargets: [routeTarget],
       },
     ]);
   });
 
-  it("passes configured BNB Chain testnet home chain and token allowlist into wallet deployment", async () => {
+  it("passes configured X Layer testnet home chain and token allowlist into wallet deployment", async () => {
     const messageToSign = "AgentPay wallet setup\nSetup intent: setup_123";
     const signature = await owner.signMessage(messageToSign);
     const deployments: unknown[] = [];
@@ -290,10 +310,24 @@ describe("createSetupWebDependencies", () => {
       {
         supabaseUrl: "https://agentpay.supabase.co",
         serviceRoleKey: "service-role-key",
-        bnbRpcUrl: "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+        xlayerRpcUrl: "https://testrpc.xlayer.tech",
+        xlayerRpcUrls: {
+          196: "https://mainnet.xlayer.tech",
+          1952: "https://testnet.xlayer.tech",
+        },
         setupDeployerPrivateKey: validPrivateKey,
         agentPayAccountBytecode: "0x60006000",
-        homeChainId: 97,
+        homeChainId: 1952,
+        stableTokenOverrides: {
+          1952: {
+            USDT0: {
+              address: "0x1111111111111111111111111111111111111111",
+            },
+            USDC: {
+              address: "0x2222222222222222222222222222222222222222",
+            },
+          },
+        },
       },
       {
         clock: () => new Date("2026-07-03T04:00:00.000Z"),
@@ -342,9 +376,10 @@ describe("createSetupWebDependencies", () => {
       {
         ownerAddress: owner.address,
         executorAddress: "0x4444444444444444444444444444444444444444",
+        homeChainId: 1952,
         initialAllowedTokenAddresses: [
-          "0xEC1C60D64a06896Df296438c12edD14E974FDE47",
-          "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
+          "0x1111111111111111111111111111111111111111",
+          "0x2222222222222222222222222222222222222222",
         ],
         initialAllowedRouteTargets: [],
       },
@@ -353,7 +388,7 @@ describe("createSetupWebDependencies", () => {
       {
         ownerAddress: owner.address,
         accountAddress: "0x3333333333333333333333333333333333333333",
-        homeChainId: 97,
+        homeChainId: 1952,
         executorAddress: "0x4444444444444444444444444444444444444444",
         status: "ACTIVE",
       },

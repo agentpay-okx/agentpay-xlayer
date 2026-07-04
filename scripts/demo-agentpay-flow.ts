@@ -47,21 +47,21 @@ const demoX402PaymentRequired = {
 const demoWallet: AgentWallet = {
   ownerAddress: "0x2222222222222222222222222222222222222222",
   accountAddress: "0x3333333333333333333333333333333333333333",
-  homeChainId: 56,
+  homeChainId: 196,
   executorAddress: "0x4444444444444444444444444444444444444444",
   status: "ACTIVE",
 };
 
 const demoRouteQuote: RouteQuote = {
   routeProvider: "LI.FI",
-  sourceTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+  sourceTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
   destinationTokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  maxAmountIn: "10.18",
+  maxAmountIn: "0.011",
   maxNativeFee: "2500000000000000",
   routeTarget: "0x7777777777777777777777777777777777777777",
   routeCalldata: "0x1234",
   routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
-  routeSummary: "Swap USDT on BNB Chain, bridge, and pay USDC on Base.",
+  routeSummary: "Swap USDT0 on X Layer, bridge, and pay USDC on Base.",
   estimatedFee: "0.12",
   estimatedEtaSeconds: 120,
 };
@@ -80,6 +80,7 @@ export interface LocalAgentPayDemoResult {
   prepared: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["preparePayment"]>>;
   executed: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["executePayment"]>>;
   tracked: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["trackPayment"]>>;
+  x402Retry: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["retryX402Request"]>>;
   transactions: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["listTransactions"]>>;
   events: Awaited<ReturnType<ReturnType<typeof createAgentPayRuntime>["listPaymentEvents"]>>;
   transcript: string[];
@@ -99,7 +100,7 @@ export async function runLocalAgentPayDemo(): Promise<LocalAgentPayDemoResult> {
     {
       supabaseUrl: "https://agentpay-demo.supabase.co",
       serviceRoleKey: "demo-service-role-key",
-      bnbRpcUrl: "https://bnb-demo-rpc.example",
+      xlayerRpcUrl: "https://xlayer-demo-rpc.example",
       executorPrivateKey: `0x${"1".repeat(64)}`,
       setupWebUrl: "https://setup.agentpay.local/setup",
     },
@@ -112,6 +113,13 @@ export async function runLocalAgentPayDemo(): Promise<LocalAgentPayDemoResult> {
       createSetupIntentId: () => "setup_demo",
       approvalTtlSeconds: 900,
       setupTtlSeconds: 900,
+      x402Fetch: async () =>
+        new Response(JSON.stringify({ market: "premium" }), {
+          status: 200,
+          headers: {
+            "x-payment-response": "settled",
+          },
+        }),
     },
   );
 
@@ -129,14 +137,18 @@ export async function runLocalAgentPayDemo(): Promise<LocalAgentPayDemoResult> {
   const balance = await runtime.getBalance({});
   const invoice = await runtime.parseInvoicePayment({ invoice: demoInvoice });
   const x402 = await runtime.parseX402PaymentRequired({ paymentRequired: demoX402PaymentRequired });
-  const quote = await runtime.quotePaymentRoute(invoice.paymentInput);
+  const quote = await runtime.quotePaymentRoute(x402.paymentInput);
   const routeAllowance = await runtime.checkRouteTargetAllowance({ routeTarget: quote.routeTarget });
-  const prepared = await runtime.preparePayment(invoice.paymentInput);
+  const prepared = await runtime.preparePayment(x402.paymentInput);
   const executed = await runtime.executePayment({
     paymentIntentId: prepared.paymentIntentId,
     approvalText: prepared.approvalPhrase,
   });
   const tracked = await runtime.trackPayment({ paymentIntentId: prepared.paymentIntentId });
+  const x402Retry = await runtime.retryX402Request({
+    paymentRequired: demoX402PaymentRequired,
+    paymentIntentId: prepared.paymentIntentId,
+  });
   const transactions = await runtime.listTransactions({ limit: 5 });
   const events = await runtime.listPaymentEvents({ paymentIntentId: prepared.paymentIntentId, limit: 10 });
 
@@ -154,20 +166,22 @@ export async function runLocalAgentPayDemo(): Promise<LocalAgentPayDemoResult> {
     prepared,
     executed,
     tracked,
+    x402Retry,
     transactions,
     events,
     transcript: [
       `Initial wallet: ${initialWallet.status}.`,
       `Setup intent: ${setup.setupIntentId} at ${setup.setupUrl}.`,
       `Setup completed: ${completedSetup.accountAddress}.`,
-      `Wallet: ${demoWallet.accountAddress} on BNB Chain.`,
+      `Wallet: ${demoWallet.accountAddress} on X Layer.`,
       `Invoice parsed: ${invoice.invoiceId ?? "without id"}.`,
-      `x402 parsed: ${x402.resource.serviceName}; standard signature required: ${x402.standardX402SignatureRequired}.`,
+      `x402 parsed: ${x402.resource.serviceName}; AgentPay proof retry available after approval.`,
       `Quote: spend up to ${quote.maxAmountIn} ${quote.sourceTokenSymbol}; max native fee ${quote.maxNativeFeeDisplay}.`,
       `Route target allowlisted: ${routeAllowance.routeTargetAllowed}.`,
       `Approval required: ${prepared.approvalPhrase}.`,
       `Execution started: ${executed.sourceTxHash}.`,
       `Tracking result: ${tracked.status}${tracked.destinationTxHash ? ` at ${tracked.destinationTxHash}` : ""}.`,
+      `x402 retry result: ${x402Retry.httpStatus} with ${x402Retry.paymentResponse ?? "no payment response"}.`,
     ],
   };
 }
@@ -318,7 +332,7 @@ function createDemoFactories(state: DemoState): AgentPayRuntimeFactories {
         },
         tokenBalances: {
           async getTokenBalance(request: { tokenSymbol: string }) {
-            return { amount: request.tokenSymbol === "USDT" ? "25" : "0" };
+            return { amount: request.tokenSymbol === "USDT0" ? "25" : "0" };
           },
         },
         nativeBalances: {

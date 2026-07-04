@@ -9,56 +9,48 @@ import {
 } from "./tokens.ts";
 
 describe("stable token metadata", () => {
-  it("returns chain-specific BNB Chain stablecoin metadata", () => {
-    assert.equal(getStableTokenAddress(56, "USDT"), "0x55d398326f99059fF775485246999027B3197955");
-    assert.equal(getStableTokenDecimalsForChain(56, "USDT"), 18);
-    assert.deepEqual(getStableTokenMetadata(56, "USDC"), {
-      symbol: "USDC",
-      address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-      decimals: 18,
+  it("returns X Layer USDt0 and USDC metadata", () => {
+    assert.deepEqual(getStableTokenMetadata(196, "USDT0"), {
+      symbol: "USDT0",
+      address: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      decimals: 6,
     });
+    assert.deepEqual(getStableTokenMetadata(196, "USDC"), {
+      symbol: "USDC",
+      address: "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
+      decimals: 6,
+    });
+    assert.equal(getStableTokenAddress(196, "USDT"), "0x779Ded0c9e1022225f8E0630b35a9b54bE713736");
+    assert.equal(getStableTokenDecimalsForChain(196, "USDT0"), 6);
   });
 
-  it("keeps Base stablecoin decimals distinct from BNB Chain", () => {
+  it("keeps Base stablecoin decimals distinct from X Layer", () => {
     assert.equal(getStableTokenDecimalsForChain(8453, "USDC"), 6);
     assert.equal(getStableTokenAddress(8453, "USDC"), "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
   });
 
-  it("returns BNB Chain testnet stablecoin metadata", () => {
-    assert.deepEqual(getStableTokenMetadata(97, "USDC"), {
-      symbol: "USDC",
-      address: "0xEC1C60D64a06896Df296438c12edD14E974FDE47",
-      decimals: 6,
-    });
-    assert.deepEqual(getStableTokenMetadata(97, "USDT"), {
-      symbol: "USDT",
-      address: "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
-      decimals: 18,
-    });
-  });
-
-  it("can override BNB Chain testnet token addresses for mock-token demos", () => {
+  it("can override X Layer testnet token addresses for hackathon demos", () => {
     configureStableTokenMetadataOverrides({
-      97: {
-        USDC: {
+      1952: {
+        USDT0: {
           address: "0x1111111111111111111111111111111111111111",
         },
-        USDT: {
+        USDC: {
           address: "0x2222222222222222222222222222222222222222",
         },
       },
     });
 
     try {
-      assert.deepEqual(getStableTokenMetadata(97, "USDC"), {
-        symbol: "USDC",
+      assert.deepEqual(getStableTokenMetadata(1952, "USDT0"), {
+        symbol: "USDT0",
         address: "0x1111111111111111111111111111111111111111",
         decimals: 6,
       });
-      assert.deepEqual(getStableTokenMetadata(97, "USDT"), {
-        symbol: "USDT",
+      assert.deepEqual(getStableTokenMetadata(1952, "USDC"), {
+        symbol: "USDC",
         address: "0x2222222222222222222222222222222222222222",
-        decimals: 18,
+        decimals: 6,
       });
     } finally {
       configureStableTokenMetadataOverrides({});

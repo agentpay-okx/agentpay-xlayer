@@ -15,15 +15,17 @@ import {
 } from "@agentpay-ai/setup-web";
 
 const runtimeNames = ["codex", "claude", "cursor", "generic", "hermes"] as const;
-const requiredConfigKeys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BNB_RPC_URL", "EXECUTOR_PRIVATE_KEY"] as const;
+const requiredConfigKeys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "XLAYER_RPC_URL", "EXECUTOR_PRIVATE_KEY"] as const;
 const setupRequiredConfigKeys = [
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "BNB_RPC_URL",
+  "XLAYER_RPC_URL",
   "SETUP_DEPLOYER_PRIVATE_KEY",
 ] as const;
 const optionalConfigKeys = [
   "BASE_RPC_URL",
+  "XLAYER_MAINNET_RPC_URL",
+  "XLAYER_TESTNET_RPC_URL",
   "SETUP_WEB_URL",
   "LIFI_API_KEY",
   "LIFI_BASE_URL",
@@ -32,8 +34,10 @@ const optionalConfigKeys = [
   "AGENTPAY_EXECUTOR_ADDRESS",
   "AGENTPAY_HOME_CHAIN_ID",
   "AGENTPAY_ACCOUNT_ADDRESS",
-  "AGENTPAY_BNB_TESTNET_USDC_ADDRESS",
-  "AGENTPAY_BNB_TESTNET_USDT_ADDRESS",
+  "AGENTPAY_XLAYER_USDT0_ADDRESS",
+  "AGENTPAY_XLAYER_USDC_ADDRESS",
+  "AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS",
+  "AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS",
   "AGENTPAY_ACCOUNT_BYTECODE_PATH",
   "AGENTPAY_ACCOUNT_BYTECODE",
   "AGENTPAY_INITIAL_ROUTE_TARGETS",
@@ -304,7 +308,13 @@ function validateMcpConfig(env: Record<string, string | undefined>): AgentPayDoc
   const missing = requiredConfigKeys.filter((name) => !env[name]);
   const invalid = [
     env.SUPABASE_URL && !isHttpUrl(env.SUPABASE_URL) ? "SUPABASE_URL" : undefined,
-    env.BNB_RPC_URL && !isHttpUrl(env.BNB_RPC_URL) ? "BNB_RPC_URL" : undefined,
+    env.XLAYER_RPC_URL && !isHttpUrl(env.XLAYER_RPC_URL) ? "XLAYER_RPC_URL" : undefined,
+    env.XLAYER_MAINNET_RPC_URL && !isHttpUrl(env.XLAYER_MAINNET_RPC_URL)
+      ? "XLAYER_MAINNET_RPC_URL"
+      : undefined,
+    env.XLAYER_TESTNET_RPC_URL && !isHttpUrl(env.XLAYER_TESTNET_RPC_URL)
+      ? "XLAYER_TESTNET_RPC_URL"
+      : undefined,
     env.EXECUTOR_PRIVATE_KEY && !privateKeyPattern.test(env.EXECUTOR_PRIVATE_KEY)
       ? "EXECUTOR_PRIVATE_KEY"
       : undefined,
@@ -324,7 +334,13 @@ async function validateSetupConfig(env: Record<string, string | undefined>): Pro
   ].filter((name): name is string => Boolean(name));
   const invalid = [
     env.SUPABASE_URL && !isHttpUrl(env.SUPABASE_URL) ? "SUPABASE_URL" : undefined,
-    env.BNB_RPC_URL && !isHttpUrl(env.BNB_RPC_URL) ? "BNB_RPC_URL" : undefined,
+    env.XLAYER_RPC_URL && !isHttpUrl(env.XLAYER_RPC_URL) ? "XLAYER_RPC_URL" : undefined,
+    env.XLAYER_MAINNET_RPC_URL && !isHttpUrl(env.XLAYER_MAINNET_RPC_URL)
+      ? "XLAYER_MAINNET_RPC_URL"
+      : undefined,
+    env.XLAYER_TESTNET_RPC_URL && !isHttpUrl(env.XLAYER_TESTNET_RPC_URL)
+      ? "XLAYER_TESTNET_RPC_URL"
+      : undefined,
     env.SETUP_DEPLOYER_PRIVATE_KEY && !privateKeyPattern.test(env.SETUP_DEPLOYER_PRIVATE_KEY)
       ? "SETUP_DEPLOYER_PRIVATE_KEY"
       : undefined,
@@ -343,12 +359,7 @@ async function validateSetupConfig(env: Record<string, string | undefined>): Pro
     env.AGENTPAY_ACCOUNT_ADDRESS && !addressPattern.test(env.AGENTPAY_ACCOUNT_ADDRESS)
       ? "AGENTPAY_ACCOUNT_ADDRESS"
       : undefined,
-    env.AGENTPAY_BNB_TESTNET_USDC_ADDRESS && !addressPattern.test(env.AGENTPAY_BNB_TESTNET_USDC_ADDRESS)
-      ? "AGENTPAY_BNB_TESTNET_USDC_ADDRESS"
-      : undefined,
-    env.AGENTPAY_BNB_TESTNET_USDT_ADDRESS && !addressPattern.test(env.AGENTPAY_BNB_TESTNET_USDT_ADDRESS)
-      ? "AGENTPAY_BNB_TESTNET_USDT_ADDRESS"
-      : undefined,
+    ...validateStableTokenOverrideAddresses(env),
     env.SETUP_WEB_PORT && !isPort(env.SETUP_WEB_PORT) ? "SETUP_WEB_PORT" : undefined,
   ].filter((name): name is string => Boolean(name));
 
@@ -416,7 +427,16 @@ function isPort(value: string): boolean {
 
 function isSetupHomeChainId(value: string): boolean {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && [56, 97].includes(parsed);
+  return Number.isInteger(parsed) && [196, 1952].includes(parsed);
+}
+
+function validateStableTokenOverrideAddresses(env: Record<string, string | undefined>): string[] {
+  return [
+    "AGENTPAY_XLAYER_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_USDC_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS",
+    "AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS",
+  ].filter((name) => env[name] && !addressPattern.test(env[name]));
 }
 
 function readOption(args: string[], optionName: string): string | undefined {

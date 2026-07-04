@@ -17,18 +17,18 @@ describe("createLifiRouteQuoteProvider", () => {
             action: {
               fromToken: {
                 address: "0x5555555555555555555555555555555555555555",
-                symbol: "USDT",
-                decimals: 18,
+                symbol: "USDT0",
+                decimals: 6,
               },
               toToken: {
                 address: "0x6666666666666666666666666666666666666666",
                 symbol: "USDC",
                 decimals: 6,
               },
-              fromAmount: "10000000000000000000",
+              fromAmount: "10000000",
             },
             estimate: {
-              fromAmount: "10200000000000000000",
+              fromAmount: "10200000",
               toAmount: "10170000",
               gasCosts: [
                 {
@@ -51,9 +51,9 @@ describe("createLifiRouteQuoteProvider", () => {
     const quote = await provider.quotePaymentRoute({
       accountAddress: "0x3333333333333333333333333333333333333333",
       ownerAddress: "0x2222222222222222222222222222222222222222",
-      sourceChainId: 56,
+      sourceChainId: 196,
       destinationChainId: 8453,
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       destinationTokenSymbol: "USDC",
       recipientAddress: "0x1111111111111111111111111111111111111111",
       amountOut: "10",
@@ -63,13 +63,13 @@ describe("createLifiRouteQuoteProvider", () => {
     assert.equal(requests.length, 1);
     const url = new URL(requests[0].url);
     assert.equal(url.origin + url.pathname, "https://li.quest/v1/quote");
-    assert.equal(url.searchParams.get("fromChain"), "56");
+    assert.equal(url.searchParams.get("fromChain"), "196");
     assert.equal(url.searchParams.get("toChain"), "8453");
-    assert.equal(url.searchParams.get("fromToken"), "USDT");
+    assert.equal(url.searchParams.get("fromToken"), "USDT0");
     assert.equal(url.searchParams.get("toToken"), "USDC");
     assert.equal(url.searchParams.get("fromAddress"), "0x3333333333333333333333333333333333333333");
     assert.equal(url.searchParams.get("toAddress"), "0x1111111111111111111111111111111111111111");
-    assert.equal(url.searchParams.get("fromAmount"), "10200000000000000000");
+    assert.equal(url.searchParams.get("fromAmount"), "10200000");
     assert.equal(url.searchParams.get("slippage"), "0.005");
     assert.equal(url.searchParams.get("integrator"), "agentpay");
     assert.deepEqual(requests[0].headers, { "x-lifi-api-key": "test-key" });
@@ -95,9 +95,9 @@ describe("createLifiRouteQuoteProvider", () => {
         provider.quotePaymentRoute({
           accountAddress: "0x3333333333333333333333333333333333333333",
           ownerAddress: "0x2222222222222222222222222222222222222222",
-          sourceChainId: 56,
+          sourceChainId: 196,
           destinationChainId: 8453,
-          sourceTokenSymbol: "USDT",
+          sourceTokenSymbol: "USDT0",
           destinationTokenSymbol: "USDC",
           recipientAddress: "0x1111111111111111111111111111111111111111",
           amountOut: "10",
@@ -131,7 +131,7 @@ describe("createLifiRouteStatusProvider", () => {
 
     const status = await provider.getRouteStatus({
       txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      fromChainId: 56,
+      fromChainId: 196,
       toChainId: 8453,
     });
 
@@ -139,7 +139,7 @@ describe("createLifiRouteStatusProvider", () => {
     const url = new URL(requests[0].url);
     assert.equal(url.origin + url.pathname, "https://li.quest/v1/status");
     assert.equal(url.searchParams.get("txHash"), "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    assert.equal(url.searchParams.get("fromChain"), "56");
+    assert.equal(url.searchParams.get("fromChain"), "196");
     assert.equal(url.searchParams.get("toChain"), "8453");
     assert.deepEqual(requests[0].headers, { "x-lifi-api-key": "test-key" });
     assert.deepEqual(status, {
@@ -159,7 +159,7 @@ describe("createLifiRouteStatusProvider", () => {
       () =>
         provider.getRouteStatus({
           txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          fromChainId: 56,
+          fromChainId: 196,
           toChainId: 8453,
         }),
       /LI.FI status failed \(400\): Bad tx hash/,

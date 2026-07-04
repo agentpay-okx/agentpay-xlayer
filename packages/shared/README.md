@@ -7,7 +7,7 @@ Use this package when building AgentPay-compatible tools that need the same vali
 ## Included Modules
 
 - Approval phrase parsing and payment intent types.
-- BNB Chain stablecoin metadata and balance helpers.
+- X Layer stablecoin metadata and balance helpers.
 - Wallet setup, invoice, x402, account admin, and payment tracking schemas.
 - Route calldata hashing helpers used by guarded contract calls.
 

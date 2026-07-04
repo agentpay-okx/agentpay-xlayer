@@ -4,9 +4,11 @@ import {
   createRouteCalldataHash,
   getChainName,
   getStableTokenMetadata,
+  resolveXLayerHomeChainId,
   type PaymentIntentRecord,
   type PrepareContractCallInput,
   prepareContractCallInputSchema,
+  type StableTokenSymbol,
 } from "@agentpay-ai/shared";
 
 import type { AgentWalletRepository, PaymentIntentRepository } from "./prepare-payment.ts";
@@ -20,6 +22,7 @@ export interface PrepareContractCallDependencies {
   clock: () => Date;
   createId: () => string;
   createNonce: () => string;
+  homeChainId?: number;
   approvalTtlSeconds?: number;
 }
 
@@ -31,7 +34,7 @@ export interface PrepareContractCallOutput {
     targetAddress: string;
     chainId: number;
     chain: string;
-    sourceTokenSymbol: "USDC" | "USDT";
+    sourceTokenSymbol: StableTokenSymbol;
     maxTokenSpend: string;
     maxNativeFee: string;
     callDataHash: string;
@@ -47,7 +50,9 @@ export async function prepareContractCall(
   dependencies: PrepareContractCallDependencies,
 ): Promise<PrepareContractCallOutput> {
   const input = prepareContractCallInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet || wallet.status !== "ACTIVE") {
     throw new Error("No active AgentPay wallet is available.");
@@ -130,10 +135,12 @@ export const prepareContractCallTool = {
     properties: {
       targetAddress: { type: "string" },
       callData: { type: "string" },
-      sourceTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      sourceTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
       maxTokenSpend: { type: "string" },
       maxNativeFee: { type: "string" },
       purpose: { type: "string" },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

@@ -3,7 +3,7 @@ import { verifyMessage } from "ethers";
 import {
   completeWalletSetupInputSchema,
   getStableTokenAddress,
-  STABLE_TOKEN_SYMBOLS,
+  DEFAULT_STABLE_TOKEN_SYMBOLS,
   type CompleteWalletSetupInput,
   type SetupIntentRecord,
 } from "@agentpay-ai/shared";
@@ -31,6 +31,7 @@ export interface SetupCompletionWalletRepository {
 export interface AgentPayAccountDeploymentRequest {
   ownerAddress: string;
   executorAddress: string;
+  homeChainId: number;
   initialAllowedTokenAddresses: string[];
   initialAllowedRouteTargets: string[];
 }
@@ -109,10 +110,11 @@ export async function completeWalletSetup(
   await dependencies.setupIntents.markSetupSigned(intent.id, ownerAddress, input.signature);
 
   try {
-    const homeChainId = dependencies.homeChainId ?? 56;
+    const homeChainId = intent.homeChainId ?? dependencies.homeChainId ?? 196;
     const deployment = await dependencies.deployer.deployAgentPayAccount({
       ownerAddress,
       executorAddress: intent.executorAddress,
+      homeChainId,
       initialAllowedTokenAddresses:
         dependencies.initialAllowedTokenAddresses ?? defaultAllowedTokenAddresses(homeChainId),
       initialAllowedRouteTargets: dependencies.initialAllowedRouteTargets ?? [],
@@ -173,7 +175,7 @@ function sameAddress(left: string, right: string): boolean {
 }
 
 function defaultAllowedTokenAddresses(homeChainId: number): string[] {
-  return STABLE_TOKEN_SYMBOLS.map((symbol) => getStableTokenAddress(homeChainId, symbol));
+  return DEFAULT_STABLE_TOKEN_SYMBOLS.map((symbol) => getStableTokenAddress(homeChainId, symbol));
 }
 
 function jsonResponse(body: unknown, status: number): Response {

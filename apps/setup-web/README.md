@@ -26,4 +26,4 @@ await startSetupWebServer(createSetupWebDependencies(config));
 
 ## Configuration
 
-Required values include `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BNB_RPC_URL`, and `SETUP_DEPLOYER_PRIVATE_KEY`. Provide `AGENTPAY_ACCOUNT_BYTECODE_PATH` or `AGENTPAY_ACCOUNT_BYTECODE` when deploying accounts.
+Required values include `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `XLAYER_RPC_URL`, and `SETUP_DEPLOYER_PRIVATE_KEY`. Add `XLAYER_MAINNET_RPC_URL` and `XLAYER_TESTNET_RPC_URL` when setup intents may deploy on either X Layer network. Provide `AGENTPAY_ACCOUNT_BYTECODE_PATH` or `AGENTPAY_ACCOUNT_BYTECODE` when deploying accounts.

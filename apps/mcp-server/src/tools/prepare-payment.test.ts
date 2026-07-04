@@ -6,6 +6,7 @@ import { preparePayment } from "./prepare-payment.ts";
 describe("preparePayment", () => {
   it("creates an awaiting-approval payment intent and returns agent instructions", async () => {
     const saved: unknown[] = [];
+    const walletReads: unknown[] = [];
 
     const result = await preparePayment(
       {
@@ -21,13 +22,16 @@ describe("preparePayment", () => {
         createNonce: () => "42",
         approvalTtlSeconds: 900,
         wallets: {
-          getActiveWallet: async () => ({
-            ownerAddress: "0x2222222222222222222222222222222222222222",
-            accountAddress: "0x3333333333333333333333333333333333333333",
-            homeChainId: 56,
-            executorAddress: "0x4444444444444444444444444444444444444444",
-            status: "ACTIVE",
-          }),
+          getActiveWallet: async (request) => {
+            walletReads.push(request);
+            return {
+              ownerAddress: "0x2222222222222222222222222222222222222222",
+              accountAddress: "0x3333333333333333333333333333333333333333",
+              homeChainId: 196,
+              executorAddress: "0x4444444444444444444444444444444444444444",
+              status: "ACTIVE",
+            };
+          },
         },
         routes: {
           quotePaymentRoute: async () => ({
@@ -39,7 +43,7 @@ describe("preparePayment", () => {
             routeTarget: "0x7777777777777777777777777777777777777777",
             routeCalldata: "0x1234",
             routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
-            routeSummary: "Swap USDT on BNB Chain, bridge, and pay USDC on Base.",
+            routeSummary: "Swap USDT0 on X Layer, bridge, and pay USDC on Base.",
             estimatedFee: "0.12",
             estimatedEtaSeconds: 120,
           }),
@@ -53,9 +57,9 @@ describe("preparePayment", () => {
           hasSufficientTokenBalance: async (request) => {
             assert.deepEqual(request, {
               accountAddress: "0x3333333333333333333333333333333333333333",
-              chainId: 56,
+              chainId: 196,
               tokenAddress: "0x5555555555555555555555555555555555555555",
-              tokenSymbol: "USDT",
+              tokenSymbol: "USDT0",
               requiredAmount: "10.18",
             });
             return true;
@@ -64,12 +68,13 @@ describe("preparePayment", () => {
       },
     );
 
+    assert.deepEqual(walletReads, [{ homeChainId: 196 }]);
     assert.equal(result.paymentIntentId, "pay_123");
     assert.equal(result.status, "AWAITING_APPROVAL");
     assert.equal(result.approvalPhrase, "APPROVE pay_123");
     assert.equal(result.summary.destinationChain, "Base");
     assert.equal(result.summary.maxNativeFee, "2500000000000000");
-    assert.equal(result.summary.maxNativeFeeDisplay, "0.0025 BNB");
+    assert.equal(result.summary.maxNativeFeeDisplay, "0.0025 OKB");
     assert.equal(result.summary.routeTarget, "0x7777777777777777777777777777777777777777");
     assert.equal(result.summary.routeCalldataHash, "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432");
     assert.equal(result.summary.requiresRouteTargetAllowlist, true);
@@ -81,10 +86,10 @@ describe("preparePayment", () => {
       ownerAddress: "0x2222222222222222222222222222222222222222",
       status: "AWAITING_APPROVAL",
       paymentType: "WALLET_PAYMENT",
-      sourceChainId: 56,
+      sourceChainId: 196,
       destinationChainId: 8453,
       sourceTokenAddress: "0x5555555555555555555555555555555555555555",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       destinationTokenAddress: "0x6666666666666666666666666666666666666666",
       destinationTokenSymbol: "USDC",
       recipientAddress: "0x1111111111111111111111111111111111111111",
@@ -95,7 +100,7 @@ describe("preparePayment", () => {
       routeTarget: "0x7777777777777777777777777777777777777777",
       routeCalldata: "0x1234",
       routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
-      routeSummary: "Swap USDT on BNB Chain, bridge, and pay USDC on Base.",
+      routeSummary: "Swap USDT0 on X Layer, bridge, and pay USDC on Base.",
       estimatedFee: "0.12",
       estimatedEtaSeconds: 120,
       nonce: "42",
@@ -111,11 +116,11 @@ describe("preparePayment", () => {
     const result = await preparePayment(
       {
         recipientAddress: "0x1111111111111111111111111111111111111111",
-        destinationChainId: 56,
-        destinationTokenSymbol: "USDT",
+        destinationChainId: 196,
+        destinationTokenSymbol: "USDT0",
         amountOut: "10",
         purpose: "same-chain payout",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
       },
       {
         clock: () => new Date("2026-07-02T14:30:00.000Z"),
@@ -126,7 +131,7 @@ describe("preparePayment", () => {
           getActiveWallet: async () => ({
             ownerAddress: "0x2222222222222222222222222222222222222222",
             accountAddress: "0x3333333333333333333333333333333333333333",
-            homeChainId: 56,
+            homeChainId: 196,
             executorAddress: "0x4444444444444444444444444444444444444444",
             status: "ACTIVE",
           }),
@@ -145,9 +150,9 @@ describe("preparePayment", () => {
           hasSufficientTokenBalance: async (request) => {
             assert.deepEqual(request, {
               accountAddress: "0x3333333333333333333333333333333333333333",
-              chainId: 56,
-              tokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-              tokenSymbol: "USDT",
+              chainId: 196,
+              tokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+              tokenSymbol: "USDT0",
               requiredAmount: "10",
             });
             return true;
@@ -157,24 +162,24 @@ describe("preparePayment", () => {
     );
 
     assert.equal(result.summary.routeProvider, "DIRECT");
-    assert.equal(result.summary.sourceSpend, "10 USDT");
-    assert.equal(result.summary.maxNativeFeeDisplay, "0 BNB");
+    assert.equal(result.summary.sourceSpend, "10 USDT0");
+    assert.equal(result.summary.maxNativeFeeDisplay, "0 OKB");
     assert.equal(result.summary.routeTarget, "0x0000000000000000000000000000000000000000");
     assert.equal(result.summary.routeCalldataHash, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
     assert.equal(result.summary.requiresRouteTargetAllowlist, false);
-    assert.equal(result.summary.routeSummary, "Direct 10 USDT transfer on BNB Chain.");
+    assert.equal(result.summary.routeSummary, "Direct 10 USDT0 transfer on X Layer.");
     assert.deepEqual(saved[0], {
       id: "pay_direct",
       accountAddress: "0x3333333333333333333333333333333333333333",
       ownerAddress: "0x2222222222222222222222222222222222222222",
       status: "AWAITING_APPROVAL",
       paymentType: "WALLET_PAYMENT",
-      sourceChainId: 56,
-      destinationChainId: 56,
-      sourceTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-      sourceTokenSymbol: "USDT",
-      destinationTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
-      destinationTokenSymbol: "USDT",
+      sourceChainId: 196,
+      destinationChainId: 196,
+      sourceTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      sourceTokenSymbol: "USDT0",
+      destinationTokenAddress: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+      destinationTokenSymbol: "USDT0",
       recipientAddress: "0x1111111111111111111111111111111111111111",
       amountOut: "10",
       maxAmountIn: "10",
@@ -183,7 +188,7 @@ describe("preparePayment", () => {
       routeTarget: "0x0000000000000000000000000000000000000000",
       routeCalldata: "0x",
       routeCalldataHash: "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-      routeSummary: "Direct 10 USDT transfer on BNB Chain.",
+      routeSummary: "Direct 10 USDT0 transfer on X Layer.",
       estimatedFee: "0",
       estimatedEtaSeconds: 0,
       nonce: "43",
@@ -199,11 +204,11 @@ describe("preparePayment", () => {
     await preparePayment(
       {
         recipientAddress: "0x1111111111111111111111111111111111111111",
-        destinationChainId: 56,
-        destinationTokenSymbol: "USDT",
+        destinationChainId: 196,
+        destinationTokenSymbol: "USDT0",
         amountOut: "10",
         purpose: "Invoice inv_123",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         paymentType: "INVOICE_PAYMENT",
       },
       {
@@ -214,7 +219,7 @@ describe("preparePayment", () => {
           getActiveWallet: async () => ({
             ownerAddress: "0x2222222222222222222222222222222222222222",
             accountAddress: "0x3333333333333333333333333333333333333333",
-            homeChainId: 56,
+            homeChainId: 196,
             executorAddress: "0x4444444444444444444444444444444444444444",
             status: "ACTIVE",
           }),
@@ -238,11 +243,11 @@ describe("preparePayment", () => {
     await preparePayment(
       {
         recipientAddress: "0x1111111111111111111111111111111111111111",
-        destinationChainId: 56,
-        destinationTokenSymbol: "USDT",
+        destinationChainId: 196,
+        destinationTokenSymbol: "USDT0",
         amountOut: "0.01",
         purpose: "x402 payment for Market API",
-        sourceTokenSymbol: "USDT",
+        sourceTokenSymbol: "USDT0",
         paymentType: "X402_PAYMENT",
       },
       {
@@ -253,7 +258,7 @@ describe("preparePayment", () => {
           getActiveWallet: async () => ({
             ownerAddress: "0x2222222222222222222222222222222222222222",
             accountAddress: "0x3333333333333333333333333333333333333333",
-            homeChainId: 56,
+            homeChainId: 196,
             executorAddress: "0x4444444444444444444444444444444444444444",
             status: "ACTIVE",
           }),
@@ -346,7 +351,7 @@ describe("preparePayment", () => {
               getActiveWallet: async () => ({
                 ownerAddress: "0x2222222222222222222222222222222222222222",
                 accountAddress: "0x3333333333333333333333333333333333333333",
-                homeChainId: 56,
+                homeChainId: 196,
                 executorAddress: "0x4444444444444444444444444444444444444444",
                 status: "ACTIVE",
               }),
@@ -361,7 +366,7 @@ describe("preparePayment", () => {
                 routeTarget: "0x7777777777777777777777777777777777777777",
                 routeCalldata: "0x1234",
                 routeCalldataHash: "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
-                routeSummary: "Swap USDT on BNB Chain, bridge, and pay USDC on Base.",
+                routeSummary: "Swap USDT0 on X Layer, bridge, and pay USDC on Base.",
                 estimatedFee: "0.12",
                 estimatedEtaSeconds: 120,
               }),
@@ -376,7 +381,7 @@ describe("preparePayment", () => {
             },
           },
         ),
-      /Insufficient AgentPay USDT balance/,
+      /Insufficient AgentPay USDT0 balance/,
     );
 
     assert.deepEqual(saved, []);

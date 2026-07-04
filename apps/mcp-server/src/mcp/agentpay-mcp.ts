@@ -14,6 +14,7 @@ import {
   prepareRouteTargetAllowanceInputSchema,
   prepareWalletCreationInputSchema,
   quotePaymentRouteInputSchema,
+  retryX402RequestInputSchema,
   trackPaymentInputSchema,
 } from "@agentpay-ai/shared";
 
@@ -22,7 +23,7 @@ import { prepareAccountAdminTransactionTool } from "../tools/account-admin.ts";
 import { executePaymentTool } from "../tools/execute-payment.ts";
 import { getBalanceTool } from "../tools/get-balance.ts";
 import { parseInvoicePaymentTool } from "../tools/invoice.ts";
-import { parseX402PaymentRequiredTool } from "../tools/x402.ts";
+import { parseX402PaymentRequiredTool, retryX402RequestTool } from "../tools/x402.ts";
 import { listPaymentEventsTool, listTransactionsTool, trackPaymentTool } from "../tools/payment-tracking.ts";
 import { prepareContractCallTool } from "../tools/prepare-contract-call.ts";
 import { preparePaymentTool } from "../tools/prepare-payment.ts";
@@ -111,6 +112,16 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     },
     async (input) =>
       toMcpResult(await runtime.parseX402PaymentRequired(parseX402PaymentRequiredInputSchema.parse(input))),
+  );
+
+  server.registerTool(
+    retryX402RequestTool.name,
+    {
+      title: "Retry x402 Request",
+      description: retryX402RequestTool.description,
+      inputSchema: retryX402RequestTool.inputSchema,
+    },
+    async (input) => toMcpResult(await runtime.retryX402Request(retryX402RequestInputSchema.parse(input))),
   );
 
   server.registerTool(

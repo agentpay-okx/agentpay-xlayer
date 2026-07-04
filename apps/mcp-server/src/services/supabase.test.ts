@@ -36,7 +36,7 @@ class FakeSelectQuery {
       data: {
         owner_address: "0x2222222222222222222222222222222222222222",
         account_address: "0x3333333333333333333333333333333333333333",
-        home_chain_id: 56,
+        home_chain_id: 196,
         executor_address: "0x4444444444444444444444444444444444444444",
         status: "ACTIVE" as const,
       },
@@ -136,10 +136,10 @@ class FakePaymentIntentQuery {
             owner_address: "0x2222222222222222222222222222222222222222",
             status: "AWAITING_APPROVAL",
             payment_type: "WALLET_PAYMENT",
-            source_chain_id: 56,
+            source_chain_id: 196,
             destination_chain_id: 8453,
             source_token_address: "0x5555555555555555555555555555555555555555",
-            source_token_symbol: "USDT",
+            source_token_symbol: "USDT0",
             destination_token_address: "0x6666666666666666666666666666666666666666",
             destination_token_symbol: "USDC",
             recipient_address: "0x1111111111111111111111111111111111111111",
@@ -244,6 +244,7 @@ class FakeSetupIntentQuery {
         error_code: null,
         error_message: null,
         completed_at: "2026-07-03T04:02:00.000Z",
+        home_chain_id: 196,
       },
       error: null,
     });
@@ -266,13 +267,35 @@ describe("createSupabaseAgentPayRepositories", () => {
     assert.deepEqual(wallet, {
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      homeChainId: 56,
+      homeChainId: 196,
       executorAddress: "0x4444444444444444444444444444444444444444",
       status: "ACTIVE",
     });
     assert.deepEqual(query.calls, [
       ["select", ["owner_address, account_address, home_chain_id, executor_address, status"]],
       ["eq", ["status", "ACTIVE"]],
+      ["order", ["created_at", { ascending: false }]],
+      ["limit", [1]],
+      ["maybeSingle", []],
+    ]);
+  });
+
+  it("loads the latest active wallet for a requested X Layer network", async () => {
+    const query = new FakeSelectQuery();
+    const client = {
+      from(table: string) {
+        assert.equal(table, "agent_wallets");
+        return query;
+      },
+    };
+
+    const repositories = createSupabaseAgentPayRepositories(client as unknown as AgentPaySupabaseClient);
+    await repositories.wallets.getActiveWallet({ homeChainId: 1952 });
+
+    assert.deepEqual(query.calls, [
+      ["select", ["owner_address, account_address, home_chain_id, executor_address, status"]],
+      ["eq", ["status", "ACTIVE"]],
+      ["eq", ["home_chain_id", 1952]],
       ["order", ["created_at", { ascending: false }]],
       ["limit", [1]],
       ["maybeSingle", []],
@@ -300,10 +323,10 @@ describe("createSupabaseAgentPayRepositories", () => {
       ownerAddress: "0x2222222222222222222222222222222222222222",
       status: "AWAITING_APPROVAL",
       paymentType: "WALLET_PAYMENT",
-      sourceChainId: 56,
+      sourceChainId: 196,
       destinationChainId: 8453,
       sourceTokenAddress: "0x5555555555555555555555555555555555555555",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       destinationTokenAddress: "0x6666666666666666666666666666666666666666",
       destinationTokenSymbol: "USDC",
       recipientAddress: "0x1111111111111111111111111111111111111111",
@@ -329,10 +352,10 @@ describe("createSupabaseAgentPayRepositories", () => {
       owner_address: "0x2222222222222222222222222222222222222222",
       status: "AWAITING_APPROVAL",
       payment_type: "WALLET_PAYMENT",
-      source_chain_id: 56,
+      source_chain_id: 196,
       destination_chain_id: 8453,
       source_token_address: "0x5555555555555555555555555555555555555555",
-      source_token_symbol: "USDT",
+      source_token_symbol: "USDT0",
       destination_token_address: "0x6666666666666666666666666666666666666666",
       destination_token_symbol: "USDC",
       recipient_address: "0x1111111111111111111111111111111111111111",
@@ -634,10 +657,10 @@ describe("createSupabaseAgentPayRepositories", () => {
         owner_address: "0x2222222222222222222222222222222222222222",
         status: "EXECUTING",
         payment_type: "WALLET_PAYMENT",
-        source_chain_id: 56,
+        source_chain_id: 196,
         destination_chain_id: 8453,
         source_token_address: "0x5555555555555555555555555555555555555555",
-        source_token_symbol: "USDT",
+        source_token_symbol: "USDT0",
         destination_token_address: "0x6666666666666666666666666666666666666666",
         destination_token_symbol: "USDC",
         recipient_address: "0x1111111111111111111111111111111111111111",
@@ -791,6 +814,7 @@ describe("createSupabaseAgentPayRepositories", () => {
       messageToSign: "AgentPay wallet setup",
       status: "PENDING",
       expiresAt: "2026-07-03T04:15:00.000Z",
+      homeChainId: 1952,
     });
 
     assert.deepEqual(query.inserted, {
@@ -800,6 +824,7 @@ describe("createSupabaseAgentPayRepositories", () => {
       message_to_sign: "AgentPay wallet setup",
       status: "PENDING",
       expires_at: "2026-07-03T04:15:00.000Z",
+      home_chain_id: 1952,
     });
   });
 
@@ -873,7 +898,7 @@ describe("createSupabaseAgentPayRepositories", () => {
     await repositories.wallets.createAgentWallet({
       ownerAddress: "0x2222222222222222222222222222222222222222",
       accountAddress: "0x3333333333333333333333333333333333333333",
-      homeChainId: 56,
+      homeChainId: 196,
       executorAddress: "0x4444444444444444444444444444444444444444",
       status: "ACTIVE",
     });
@@ -881,7 +906,7 @@ describe("createSupabaseAgentPayRepositories", () => {
     assert.deepEqual(query.inserted, {
       owner_address: "0x2222222222222222222222222222222222222222",
       account_address: "0x3333333333333333333333333333333333333333",
-      home_chain_id: 56,
+      home_chain_id: 196,
       executor_address: "0x4444444444444444444444444444444444444444",
       status: "ACTIVE",
     });
@@ -896,10 +921,10 @@ describe("toPaymentIntentRow", () => {
       ownerAddress: "0x2222222222222222222222222222222222222222",
       status: "AWAITING_APPROVAL",
       paymentType: "WALLET_PAYMENT",
-      sourceChainId: 56,
+      sourceChainId: 196,
       destinationChainId: 8453,
       sourceTokenAddress: "0x5555555555555555555555555555555555555555",
-      sourceTokenSymbol: "USDT",
+      sourceTokenSymbol: "USDT0",
       destinationTokenAddress: "0x6666666666666666666666666666666666666666",
       destinationTokenSymbol: "USDC",
       recipientAddress: "0x1111111111111111111111111111111111111111",

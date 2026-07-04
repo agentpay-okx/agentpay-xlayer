@@ -33,7 +33,7 @@ async function main() {
         AGENTPAY_CONFIG: join(installDir, "config.json"),
         SUPABASE_URL: "https://agentpay.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
-        BNB_RPC_URL: "https://rpc.example",
+        XLAYER_RPC_URL: "https://rpc.example",
         EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
         SETUP_DEPLOYER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
       },

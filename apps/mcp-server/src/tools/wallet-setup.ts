@@ -3,6 +3,7 @@ import {
   getAgentWalletInputSchema,
   getChainName,
   prepareWalletCreationInputSchema,
+  resolveXLayerHomeChainId,
   type CheckWalletCreationInput,
   type GetAgentWalletInput,
   type PrepareWalletCreationInput,
@@ -33,6 +34,7 @@ export interface CheckWalletCreationDependencies {
 
 export interface GetAgentWalletDependencies {
   wallets: AgentWalletRepository;
+  homeChainId?: number;
 }
 
 export interface PrepareWalletCreationOutput {
@@ -41,6 +43,8 @@ export interface PrepareWalletCreationOutput {
   setupUrl: string;
   messageToSign: string;
   expiresAt: string;
+  homeChainId: number;
+  homeChain: string;
 }
 
 export interface CheckWalletCreationOutput {
@@ -50,6 +54,8 @@ export interface CheckWalletCreationOutput {
   accountAddress?: string;
   completedAt?: string;
   expiresAt: string;
+  homeChainId?: number;
+  homeChain?: string;
 }
 
 export interface GetAgentWalletOutput {
@@ -71,11 +77,13 @@ export async function prepareWalletCreation(
   const setupIntentId = dependencies.createSetupIntentId();
   const setupTtlSeconds = dependencies.setupTtlSeconds ?? 900;
   const expiresAt = new Date(dependencies.clock().getTime() + setupTtlSeconds * 1000).toISOString();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
   const messageToSign = createSetupMessage({
     setupIntentId,
     ownerAddress: input.ownerAddress,
     executorAddress: dependencies.executorAddress,
-    homeChainId: dependencies.homeChainId ?? 56,
+    homeChainId,
     expiresAt,
   });
 
@@ -86,6 +94,7 @@ export async function prepareWalletCreation(
     messageToSign,
     status: "PENDING",
     expiresAt,
+    homeChainId,
   });
 
   return {
@@ -94,6 +103,8 @@ export async function prepareWalletCreation(
     setupUrl: createSetupUrl(dependencies.setupWebUrl, setupIntentId),
     messageToSign,
     expiresAt,
+    homeChainId,
+    homeChain: getChainName(homeChainId),
   };
 }
 
@@ -115,6 +126,8 @@ export async function checkWalletCreation(
     accountAddress: intent.accountAddress,
     completedAt: intent.completedAt,
     expiresAt: intent.expiresAt,
+    homeChainId: intent.homeChainId,
+    homeChain: intent.homeChainId ? getChainName(intent.homeChainId) : undefined,
   };
 }
 
@@ -122,8 +135,10 @@ export async function getAgentWallet(
   rawInput: GetAgentWalletInput,
   dependencies: GetAgentWalletDependencies,
 ): Promise<GetAgentWalletOutput> {
-  getAgentWalletInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const input = getAgentWalletInputSchema.parse(rawInput);
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet) {
     return {
@@ -152,6 +167,8 @@ export const prepareWalletCreationTool = {
     additionalProperties: false,
     properties: {
       ownerAddress: { type: "string" },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;
@@ -175,7 +192,10 @@ export const getAgentWalletTool = {
   inputSchema: {
     type: "object",
     additionalProperties: false,
-    properties: {},
+    properties: {
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
+    },
   },
 } as const;
 

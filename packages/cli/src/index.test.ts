@@ -71,6 +71,8 @@ describe("installAgentPay", () => {
         }),
       );
       assert.equal("SETUP_DEPLOYER_PRIVATE_KEY" in config, true);
+      assert.equal("XLAYER_MAINNET_RPC_URL" in config, true);
+      assert.equal("XLAYER_TESTNET_RPC_URL" in config, true);
       assert.equal("AGENTPAY_OWNER_ADDRESS" in config, true);
       assert.equal("AGENTPAY_EXECUTOR_ADDRESS" in config, true);
       assert.equal(config.AGENTPAY_ACCOUNT_BYTECODE_PATH, bytecodePath);
@@ -212,7 +214,7 @@ describe("loadAgentPayConfigEnv", () => {
         JSON.stringify(
           {
             SUPABASE_URL: "https://agentpay.supabase.co",
-            BNB_RPC_URL: "https://rpc.example",
+            XLAYER_RPC_URL: "https://rpc.example",
             EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
           },
           null,
@@ -227,7 +229,7 @@ describe("loadAgentPayConfigEnv", () => {
 
       assert.equal(env.SUPABASE_URL, "https://agentpay.supabase.co");
       assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, "env-service-key");
-      assert.equal(env.BNB_RPC_URL, "https://rpc.example");
+      assert.equal(env.XLAYER_RPC_URL, "https://rpc.example");
       assert.equal(env.EXECUTOR_PRIVATE_KEY, `0x${"1".repeat(64)}`);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
@@ -247,7 +249,9 @@ describe("runAgentPayDoctor", () => {
           {
             SUPABASE_URL: "https://agentpay.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
-            BNB_RPC_URL: "",
+            XLAYER_RPC_URL: "",
+            XLAYER_MAINNET_RPC_URL: "mainnet-rpc",
+            XLAYER_TESTNET_RPC_URL: "testnet-rpc",
             EXECUTOR_PRIVATE_KEY: "",
           },
           null,
@@ -260,8 +264,9 @@ describe("runAgentPayDoctor", () => {
       });
 
       assert.equal(report.ok, false);
-      assert.deepEqual(report.mcp.missing, ["BNB_RPC_URL", "EXECUTOR_PRIVATE_KEY"]);
-      assert.match(report.text, /MCP runtime: missing BNB_RPC_URL, EXECUTOR_PRIVATE_KEY/);
+      assert.deepEqual(report.mcp.missing, ["XLAYER_RPC_URL", "EXECUTOR_PRIVATE_KEY"]);
+      assert.deepEqual(report.mcp.invalid, ["XLAYER_MAINNET_RPC_URL", "XLAYER_TESTNET_RPC_URL"]);
+      assert.match(report.text, /MCP runtime: missing XLAYER_RPC_URL, EXECUTOR_PRIVATE_KEY; invalid XLAYER_MAINNET_RPC_URL, XLAYER_TESTNET_RPC_URL/);
       assert.doesNotMatch(report.text, /service-role-secret/);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
@@ -272,7 +277,9 @@ describe("runAgentPayDoctor", () => {
     const report = await runAgentPayDoctor({
       SUPABASE_URL: "https://agentpay.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-role-secret",
-      BNB_RPC_URL: "https://rpc.example",
+      XLAYER_RPC_URL: "https://rpc.example",
+      XLAYER_MAINNET_RPC_URL: "https://mainnet-rpc.example",
+      XLAYER_TESTNET_RPC_URL: "https://testnet-rpc.example",
       EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
       SETUP_DEPLOYER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
       AGENTPAY_ACCOUNT_BYTECODE: "0x6000",
@@ -328,7 +335,7 @@ describe("runAgentPayCli", () => {
       env: {
         SUPABASE_URL: "https://agentpay.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-        BNB_RPC_URL: "https://rpc.example",
+        XLAYER_RPC_URL: "https://rpc.example",
         EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
       },
       async startMcpServer(options) {
@@ -366,7 +373,7 @@ describe("runAgentPayCli", () => {
       env: {
         SUPABASE_URL: "https://agentpay.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-        BNB_RPC_URL: "https://rpc.example",
+        XLAYER_RPC_URL: "https://rpc.example",
         SETUP_DEPLOYER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
         AGENTPAY_ACCOUNT_BYTECODE: "0x6000",
         SETUP_WEB_PORT: "3333",

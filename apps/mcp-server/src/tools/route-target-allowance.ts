@@ -1,6 +1,7 @@
 import {
   checkRouteTargetAllowanceInputSchema,
   getChainName,
+  resolveXLayerHomeChainId,
   type CheckRouteTargetAllowanceInput,
   prepareRouteTargetAllowanceInputSchema,
   type PrepareRouteTargetAllowanceInput,
@@ -15,6 +16,7 @@ const accountManagementInterface = new Interface([
 
 export interface PrepareRouteTargetAllowanceDependencies {
   wallets: AgentWalletRepository;
+  homeChainId?: number;
 }
 
 export interface RouteTargetAllowanceCheckRequest {
@@ -30,6 +32,7 @@ export interface RouteTargetAllowanceChecker {
 export interface CheckRouteTargetAllowanceDependencies {
   wallets: AgentWalletRepository;
   routeTargetAllowances: RouteTargetAllowanceChecker;
+  homeChainId?: number;
 }
 
 export interface RouteTargetAllowanceTransaction {
@@ -85,7 +88,9 @@ export async function checkRouteTargetAllowance(
   dependencies: CheckRouteTargetAllowanceDependencies,
 ): Promise<CheckRouteTargetAllowanceOutput> {
   const input = checkRouteTargetAllowanceInputSchema.parse(rawInput);
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet) {
     return {
@@ -123,7 +128,9 @@ export async function prepareRouteTargetAllowance(
 ): Promise<PrepareRouteTargetAllowanceOutput> {
   const input = prepareRouteTargetAllowanceInputSchema.parse(rawInput);
   const action = input.allowed ? "ALLOW" : "REVOKE";
-  const wallet = await dependencies.wallets.getActiveWallet();
+  const fallbackHomeChainId = dependencies.homeChainId === 1952 ? 1952 : 196;
+  const homeChainId = resolveXLayerHomeChainId(input, fallbackHomeChainId);
+  const wallet = await dependencies.wallets.getActiveWallet({ homeChainId });
 
   if (!wallet) {
     return {
@@ -178,6 +185,8 @@ export const prepareRouteTargetAllowanceTool = {
     properties: {
       routeTarget: { type: "string" },
       allowed: { type: "boolean", default: true },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;
@@ -191,6 +200,8 @@ export const checkRouteTargetAllowanceTool = {
     required: ["routeTarget"],
     properties: {
       routeTarget: { type: "string" },
+      network: { type: "string", enum: ["mainnet", "testnet"] },
+      homeChainId: { type: "number", enum: [196, 1952] },
     },
   },
 } as const;

@@ -92,9 +92,10 @@ describe("completeWalletSetup", () => {
         {
           ownerAddress: owner.address,
           executorAddress,
+          homeChainId: 196,
           initialAllowedTokenAddresses: [
-            "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-            "0x55d398326f99059fF775485246999027B3197955",
+            "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+            "0x74b7F16337b8972027F6196A17a631aC6dE26d22",
           ],
           initialAllowedRouteTargets: [],
         },
@@ -104,7 +105,7 @@ describe("completeWalletSetup", () => {
         {
           ownerAddress: owner.address,
           accountAddress,
-          homeChainId: 56,
+          homeChainId: 196,
           executorAddress,
           status: "ACTIVE",
         },
@@ -162,6 +163,62 @@ describe("completeWalletSetup", () => {
     );
 
     assert.equal(failed[0]?.[1], "OWNER_MISMATCH");
+  });
+
+  it("uses the setup intent home chain when storing the deployed wallet", async () => {
+    const wallets: unknown[] = [];
+    const deploys: unknown[] = [];
+
+    await completeWalletSetup(
+      {
+        setupIntentId: "setup_testnet",
+        signature: "0x" + "c".repeat(130),
+      },
+      {
+        setupIntents: {
+          async getSetupIntent() {
+            return {
+              ...setupIntent,
+              id: "setup_testnet",
+              homeChainId: 1952,
+            };
+          },
+          async markSetupSigned() {},
+          async markSetupCompleted() {},
+          async markSetupExpired() {},
+          async markSetupFailed() {},
+        },
+        wallets: {
+          async createAgentWallet(wallet) {
+            wallets.push(wallet);
+          },
+        },
+        deployer: {
+          async deployAgentPayAccount(request) {
+            deploys.push(request);
+            return { accountAddress };
+          },
+        },
+        signatureVerifier: {
+          async recoverSignerAddress() {
+            return owner.address;
+          },
+        },
+        clock: () => new Date("2026-07-03T04:02:00.000Z"),
+        homeChainId: 196,
+        initialAllowedTokenAddresses: [
+          "0xaf3a391f2b2fb1e139b197c3286f9ebb626605ea",
+          "0xc6a555771769b5d82421de5d6bed88431c115462",
+        ],
+      },
+    );
+
+    assert.equal((wallets[0] as { homeChainId: number }).homeChainId, 1952);
+    assert.equal((deploys[0] as { homeChainId: number }).homeChainId, 1952);
+    assert.deepEqual((deploys[0] as { initialAllowedTokenAddresses: string[] }).initialAllowedTokenAddresses, [
+      "0xaf3a391f2b2fb1e139b197c3286f9ebb626605ea",
+      "0xc6a555771769b5d82421de5d6bed88431c115462",
+    ]);
   });
 
   it("marks expired setup intents expired before verification or deployment", async () => {

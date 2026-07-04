@@ -2,7 +2,7 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { z } from "zod";
 
-import { getChainName } from "./chains.ts";
+import { getChainName, networkSelectionShape } from "./chains.ts";
 import { getStableTokenMetadata, stableTokenSymbolSchema } from "./tokens.ts";
 
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
@@ -44,8 +44,9 @@ export const preparePaymentInputSchema = z.object({
   destinationTokenSymbol: stableTokenSymbolSchema,
   amountOut: positiveDecimalStringSchema,
   purpose: z.string().trim().min(1).max(280),
-  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT"),
+  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT0"),
   paymentType: stablecoinPaymentTypeSchema.default("WALLET_PAYMENT"),
+  ...networkSelectionShape,
 });
 
 export const quotePaymentRouteInputSchema = preparePaymentInputSchema.omit({ purpose: true, paymentType: true });
@@ -66,10 +67,11 @@ export type ExecutePaymentInput = z.infer<typeof executePaymentInputSchema>;
 export const prepareContractCallInputSchema = z.object({
   targetAddress: evmAddressSchema,
   callData: hexDataSchema.refine((value) => value !== "0x", "Expected non-empty calldata"),
-  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT"),
+  sourceTokenSymbol: stableTokenSymbolSchema.default("USDT0"),
   maxTokenSpend: positiveDecimalStringSchema,
   maxNativeFee: z.string().regex(/^(?:0|[1-9]\d*)$/, "Expected a non-negative integer string").default("0"),
   purpose: z.string().trim().min(1).max(280),
+  ...networkSelectionShape,
 });
 
 export type PrepareContractCallInput = z.input<typeof prepareContractCallInputSchema>;

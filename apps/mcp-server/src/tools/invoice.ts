@@ -2,6 +2,7 @@ import {
   parseInvoicePayment,
   type ParseInvoicePaymentInput,
   parseInvoicePaymentInputSchema,
+  type StableTokenSymbol,
 } from "@agentpay-ai/shared";
 
 export interface ParseInvoicePaymentOutput {
@@ -11,10 +12,10 @@ export interface ParseInvoicePaymentOutput {
     recipientAddress: string;
     destinationChainId: number;
     destinationChain: string;
-    destinationTokenSymbol: "USDC" | "USDT";
+    destinationTokenSymbol: StableTokenSymbol;
     amountOut: string;
     purpose: string;
-    sourceTokenSymbol: "USDC" | "USDT";
+    sourceTokenSymbol: StableTokenSymbol;
     paymentType: "INVOICE_PAYMENT";
   };
   instructionToAgent: string;
@@ -52,7 +53,7 @@ export const parseInvoicePaymentTool = {
     required: ["invoice"],
     properties: {
       invoice: { type: "string" },
-      sourceTokenSymbol: { type: "string", enum: ["USDC", "USDT"] },
+      sourceTokenSymbol: { type: "string", enum: ["USDT0", "USDC", "USDT"] },
     },
   },
 } as const;
