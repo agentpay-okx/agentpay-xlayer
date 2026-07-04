@@ -5,8 +5,8 @@ import { join } from "node:path";
 import {
   createSupabaseAgentPayRepositoriesFromConfig,
   type SupabaseRuntimeConfig,
-} from "@agentpay/mcp-server";
-import type { SetupIntentRecord } from "@agentpay/shared";
+} from "@agentpay-ai/mcp-server";
+import type { SetupIntentRecord } from "@agentpay-ai/shared";
 
 import {
   createEthersAgentPayAccountDeployer,

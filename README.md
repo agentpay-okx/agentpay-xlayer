@@ -6,7 +6,7 @@ AgentPay is a chat-approved stablecoin payment layer for AI agents, starting fro
 
 - `apps/mcp-server` for agent-facing MCP tools.
 - `apps/setup-web` for wallet setup and signing.
-- `packages/cli` for `npx agentpay install`.
+- `packages/cli` for `npx @agentpay-ai/agentpay install`.
 - `packages/skill` for the AgentPay `SKILL.md` behavior pack.
 - `packages/shared` for shared types, chain metadata, tokens, and validation.
 - `contracts` for the AgentPay smart account.
@@ -21,10 +21,10 @@ npm run demo:local
 npm run contracts:bytecode
 npm run release:smoke
 npm run contracts:deploy:bnb
-npx agentpay doctor
-npx agentpay setup-web
-npm --workspace @agentpay/mcp-server test
-npm --workspace @agentpay/setup-web test
+npx @agentpay-ai/agentpay doctor
+npx @agentpay-ai/agentpay setup-web
+npm --workspace @agentpay-ai/mcp-server test
+npm --workspace @agentpay-ai/setup-web test
 cd contracts && forge test
 ```
 
@@ -32,19 +32,19 @@ Use workspace tests while iterating on one package, then run `npm test` and `npm
 
 `npm run demo:local` runs a deterministic in-memory AgentPay flow with the real runtime tools: wallet setup intent, setup completion, wallet lookup, balance, invoice parsing, x402 parsing, LI.FI-style quote, `prepare_payment`, exact approval, `execute_payment`, `track_payment`, transaction history, and payment events. It does not need Supabase, RPC credentials, or private keys.
 
-`npm run release:smoke` packs `@agentpay/skill`, `@agentpay/shared`, `@agentpay/mcp-server`, `@agentpay/setup-web`, and `agentpay` into local tarballs, installs them into a temporary project, runs `npx agentpay install`, and verifies `npx agentpay doctor` with dummy non-secret config. Run it before publishing npm packages.
+`npm run release:smoke` packs `@agentpay-ai/skill`, `@agentpay-ai/shared`, `@agentpay-ai/mcp-server`, `@agentpay-ai/setup-web`, and `@agentpay-ai/agentpay` into local tarballs, installs them into a temporary project, runs `npx @agentpay-ai/agentpay install`, and verifies `npx @agentpay-ai/agentpay doctor` with dummy non-secret config. Run it before publishing npm packages.
 
 Use `docs/release-handoff.md` for the current local readiness summary, then `docs/launch-checklist.md` for the remaining external launch steps: Supabase project setup, BNB Chain testnet deployment, npm publish order, and demo video capture.
 
 ## Local Runtime Configuration
 
-`npx agentpay install` detects the target runtime from local project markers when possible, falls back to generic MCP instructions, and accepts `--runtime codex|claude|cursor|generic|hermes` when you want to choose explicitly. It writes an `AGENTPAY_CONFIG`-compatible JSON file, runtime-specific MCP instructions, `skills/agentpay/SKILL.md`, and the bundled smart account bytecode. The MCP server and setup web both read the generated config:
+`npx @agentpay-ai/agentpay install` detects the target runtime from local project markers when possible, falls back to generic MCP instructions, and accepts `--runtime codex|claude|cursor|generic|hermes` when you want to choose explicitly. It writes an `AGENTPAY_CONFIG`-compatible JSON file, runtime-specific MCP instructions, `skills/agentpay/SKILL.md`, and the bundled smart account bytecode. The MCP server and setup web both read the generated config:
 
 ```bash
-AGENTPAY_CONFIG=~/.agentpay/config.json npx agentpay setup-web
+AGENTPAY_CONFIG=~/.agentpay/config.json npx @agentpay-ai/agentpay setup-web
 ```
 
-After filling `~/.agentpay/config.json`, run `npx agentpay doctor` to check MCP and setup-web readiness without starting services or printing secret values.
+After filling `~/.agentpay/config.json`, run `npx @agentpay-ai/agentpay doctor` to check MCP and setup-web readiness without starting services or printing secret values.
 
 For setup web, fill `SETUP_DEPLOYER_PRIVATE_KEY` and either `AGENTPAY_ACCOUNT_BYTECODE` or `AGENTPAY_ACCOUNT_BYTECODE_PATH`. To generate a bytecode file from the Foundry artifact:
 
@@ -52,7 +52,7 @@ For setup web, fill `SETUP_DEPLOYER_PRIVATE_KEY` and either `AGENTPAY_ACCOUNT_BY
 npm run contracts:bytecode
 ```
 
-`npx agentpay install` already writes `AgentPayAccount.bin` and points `AGENTPAY_ACCOUNT_BYTECODE_PATH` at it. Use `npm run contracts:bytecode` when developing contracts and refreshing the packaged bytecode asset.
+`npx @agentpay-ai/agentpay install` already writes `AgentPayAccount.bin` and points `AGENTPAY_ACCOUNT_BYTECODE_PATH` at it. Use `npm run contracts:bytecode` when developing contracts and refreshing the packaged bytecode asset.
 
 ## Contract Deployment
 

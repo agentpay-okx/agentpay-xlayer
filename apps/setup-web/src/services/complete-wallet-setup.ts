@@ -6,7 +6,7 @@ import {
   STABLE_TOKEN_SYMBOLS,
   type CompleteWalletSetupInput,
   type SetupIntentRecord,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 export interface AgentWalletRecord {
   ownerAddress: string;

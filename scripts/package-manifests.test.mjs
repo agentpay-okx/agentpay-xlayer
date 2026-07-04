@@ -11,6 +11,14 @@ const publishablePackages = [
   "apps/setup-web",
   "packages/cli",
 ];
+const publishScope = "@agentpay-ai";
+const expectedPackageNames = new Map([
+  ["packages/skill", "@agentpay-ai/skill"],
+  ["packages/shared", "@agentpay-ai/shared"],
+  ["apps/mcp-server", "@agentpay-ai/mcp-server"],
+  ["apps/setup-web", "@agentpay-ai/setup-web"],
+  ["packages/cli", "@agentpay-ai/agentpay"],
+]);
 
 async function readPackageJson(packageDir) {
   const path = join(process.cwd(), packageDir, "package.json");
@@ -31,6 +39,11 @@ describe("publishable AgentPay package manifests", () => {
       await Promise.all(
         publishablePackages.map(async (packageDir) => {
           const manifest = await readPackageJson(packageDir);
+          assert.equal(
+            manifest.name,
+            expectedPackageNames.get(packageDir),
+            `${packageDir} must publish under the ${publishScope} npm org`,
+          );
           return [manifest.name, { packageDir, manifest }];
         }),
       ),
@@ -45,7 +58,7 @@ describe("publishable AgentPay package manifests", () => {
         assert.doesNotMatch(filePattern, /\.test\./, `${packageDir} must not publish test files`);
       }
 
-      if (manifest.name.startsWith("@agentpay/")) {
+      if (manifest.name.startsWith(`${publishScope}/`)) {
         assert.equal(manifest.publishConfig?.access, "public", `${packageDir} scoped package must publish public`);
       }
     }
@@ -70,19 +83,19 @@ describe("publishable AgentPay package manifests", () => {
   it("declares runtime dependencies in the package that imports them", async () => {
     const rootManifest = await readPackageJson(".");
     const expectedDependencies = {
-      "@agentpay/shared": {
+      "@agentpay-ai/shared": {
         "@noble/hashes": rootManifest.dependencies["@noble/hashes"],
         zod: rootManifest.dependencies.zod,
       },
-      "@agentpay/mcp-server": {
+      "@agentpay-ai/mcp-server": {
         "@supabase/supabase-js": rootManifest.dependencies["@supabase/supabase-js"],
         ethers: rootManifest.dependencies.ethers,
       },
-      "@agentpay/setup-web": {
+      "@agentpay-ai/setup-web": {
         ethers: rootManifest.dependencies.ethers,
       },
-      agentpay: {
-        "@agentpay/skill": "0.1.0",
+      "@agentpay-ai/agentpay": {
+        "@agentpay-ai/skill": "0.1.0",
       },
     };
 

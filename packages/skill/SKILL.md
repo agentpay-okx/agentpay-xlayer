@@ -18,7 +18,7 @@ Do not bypass AgentPay with raw RPC calls, manual wallet transfers, raw LI.FI ca
 The public install command is:
 
 ```bash
-npx agentpay install
+npx @agentpay-ai/agentpay install
 ```
 
 The install command only installs/configures the MCP plugin and instructions. It must not create a wallet, deploy a smart account, sign messages, approve payments, or move funds.
@@ -26,7 +26,7 @@ The install command only installs/configures the MCP plugin and instructions. It
 After the user fills the generated config, use:
 
 ```bash
-npx agentpay doctor
+npx @agentpay-ai/agentpay doctor
 ```
 
 This checks MCP and setup-web readiness without starting services or printing secret values.
@@ -34,7 +34,7 @@ This checks MCP and setup-web readiness without starting services or printing se
 To serve the setup/signing page from the generated config, use:
 
 ```bash
-npx agentpay setup-web
+npx @agentpay-ai/agentpay setup-web
 ```
 
 ## If AgentPay Is Not Installed
@@ -45,19 +45,19 @@ If the user asks for a crypto payment and AgentPay MCP tools are unavailable:
 2. If you have terminal/local command access, ask for explicit approval before installing:
 
 ```txt
-I can install AgentPay by running `npx agentpay install`.
+I can install AgentPay by running `npx @agentpay-ai/agentpay install`.
 This will modify local MCP/runtime configuration. Do you approve?
 ```
 
 3. Only after approval, run:
 
 ```bash
-npx agentpay install
+npx @agentpay-ai/agentpay install
 ```
 
-4. Ask the user to fill the generated config, then run `npx agentpay doctor` if terminal access is available.
+4. Ask the user to fill the generated config, then run `npx @agentpay-ai/agentpay doctor` if terminal access is available.
 5. If you do not have terminal/local command access, explain that AgentPay cannot be installed or checked from this session.
-6. When setup-web readiness is required, run `npx agentpay setup-web` to serve the signing page.
+6. When setup-web readiness is required, run `npx @agentpay-ai/agentpay setup-web` to serve the signing page.
 7. After installation, ask the user to restart/reload the runtime if needed, then continue in chat with wallet creation.
 
 ## Available MCP Tools
@@ -259,7 +259,7 @@ Use these responses:
 - Never ask the user to send funds to an address that was not returned by AgentPay.
 - Never modify payment details after approval.
 - Never execute payment outside AgentPay MCP tools.
-- Never run `npx agentpay install` without explicit user approval when acting on the user's machine.
+- Never run `npx @agentpay-ai/agentpay install` without explicit user approval when acting on the user's machine.
 - Never treat installation approval as payment approval.
 - Never treat setup signature as payment approval.
 - Never treat an x402 parse result as payment approval or protocol settlement.

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { PaymentEventRecord, PaymentIntentRecord, SetupIntentRecord } from "@agentpay/shared";
+import type { PaymentEventRecord, PaymentIntentRecord, SetupIntentRecord } from "@agentpay-ai/shared";
 
 import type { ExecutePaymentIntentRepository } from "../tools/execute-payment.ts";
 import type {

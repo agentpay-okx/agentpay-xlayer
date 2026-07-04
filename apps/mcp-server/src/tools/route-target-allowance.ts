@@ -4,7 +4,7 @@ import {
   type CheckRouteTargetAllowanceInput,
   prepareRouteTargetAllowanceInputSchema,
   type PrepareRouteTargetAllowanceInput,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 import { Interface } from "ethers";
 
 import type { AgentWalletRepository } from "./prepare-payment.ts";

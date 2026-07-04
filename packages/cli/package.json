@@ -1,5 +1,5 @@
 {
-  "name": "agentpay",
+  "name": "@agentpay-ai/agentpay",
   "version": "0.1.0",
   "type": "module",
   "bin": {
@@ -11,14 +11,17 @@
     "src/index.ts",
     "templates/"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p ../../tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@agentpay/mcp-server": "0.1.0",
-    "@agentpay/skill": "0.1.0",
-    "@agentpay/setup-web": "0.1.0",
+    "@agentpay-ai/mcp-server": "0.1.0",
+    "@agentpay-ai/skill": "0.1.0",
+    "@agentpay-ai/setup-web": "0.1.0",
     "tsx": "^4.22.5"
   }
 }

@@ -10,7 +10,7 @@ import {
   preparePaymentInputSchema,
   type RouteProvider,
   type RouteQuote,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { TokenBalanceChecker } from "./execute-payment.ts";
 

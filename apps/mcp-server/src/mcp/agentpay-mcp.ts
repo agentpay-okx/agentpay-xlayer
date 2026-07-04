@@ -15,7 +15,7 @@ import {
   prepareWalletCreationInputSchema,
   quotePaymentRouteInputSchema,
   trackPaymentInputSchema,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { AgentPayRuntime } from "../runtime/agentpay-runtime.ts";
 import { prepareAccountAdminTransactionTool } from "../tools/account-admin.ts";

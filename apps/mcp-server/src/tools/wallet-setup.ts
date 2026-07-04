@@ -7,7 +7,7 @@ import {
   type GetAgentWalletInput,
   type PrepareWalletCreationInput,
   type SetupIntentRecord,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { AgentWalletRepository } from "./prepare-payment.ts";
 

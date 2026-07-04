@@ -26,8 +26,8 @@ async function main() {
     run(npmCommand, ["init", "-y"], { cwd: appDir, quiet: true });
     await mkdir(join(appDir, ".codex"));
     run(npmCommand, ["install", "--ignore-scripts", ...tarballs], { cwd: appDir, quiet: true });
-    run(npxCommand, ["agentpay", "install", "--output-dir", installDir], { cwd: appDir });
-    run(npxCommand, ["agentpay", "doctor"], {
+    run(npxCommand, ["@agentpay-ai/agentpay", "install", "--output-dir", installDir], { cwd: appDir });
+    run(npxCommand, ["@agentpay-ai/agentpay", "doctor"], {
       cwd: appDir,
       env: {
         AGENTPAY_CONFIG: join(installDir, "config.json"),

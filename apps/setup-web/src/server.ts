@@ -5,7 +5,7 @@ import {
   completeWalletSetupInputSchema,
   type CompleteWalletSetupInput,
   type SetupIntentRecord,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { CompleteWalletSetupOutput } from "./services/complete-wallet-setup.ts";
 

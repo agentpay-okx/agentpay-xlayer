@@ -5,7 +5,7 @@ import {
   getStableTokenMetadata,
   type GetBalanceInput,
   type StableTokenSymbol,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { AgentWalletRepository } from "./prepare-payment.ts";
 

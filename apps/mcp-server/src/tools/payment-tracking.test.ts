@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { PaymentIntentRecord } from "@agentpay/shared";
+import type { PaymentIntentRecord } from "@agentpay-ai/shared";
 
 import { listPaymentEvents, listTransactions, trackPayment } from "./payment-tracking.ts";
 

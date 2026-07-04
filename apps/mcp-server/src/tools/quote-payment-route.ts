@@ -6,7 +6,7 @@ import {
   quotePaymentRouteInputSchema,
   type QuotePaymentRouteInput,
   type RouteProvider,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { AgentWalletRepository, RouteQuoteProvider } from "./prepare-payment.ts";
 import { assertSufficientSourceTokenBalance } from "./prepare-payment.ts";

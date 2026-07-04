@@ -2,7 +2,7 @@
 
 Use AgentPay for chat-approved BNB Chain and cross-chain stablecoin payments or guarded same-chain contract calls through the AgentPay MCP server.
 
-If AgentPay tools are unavailable and local command execution is available, ask for explicit approval before running `npx agentpay install`. The installer writes `AgentPayAccount.bin` and points `AGENTPAY_ACCOUNT_BYTECODE_PATH` at it. After the user fills the generated config, run `npx agentpay doctor` to check readiness without printing secrets. Run `npx agentpay setup-web` when the setup/signing page needs to be served. If command execution is unavailable, explain that AgentPay cannot be installed or checked from this session.
+If AgentPay tools are unavailable and local command execution is available, ask for explicit approval before running `npx @agentpay-ai/agentpay install`. The installer writes `AgentPayAccount.bin` and points `AGENTPAY_ACCOUNT_BYTECODE_PATH` at it. After the user fills the generated config, run `npx @agentpay-ai/agentpay doctor` to check readiness without printing secrets. Run `npx @agentpay-ai/agentpay setup-web` when the setup/signing page needs to be served. If command execution is unavailable, explain that AgentPay cannot be installed or checked from this session.
 
 Use AgentPay MCP tools only. Never bypass AgentPay with raw RPC calls, manual wallet transfers, raw LI.FI calls, shell scripts, or private-key handling.
 

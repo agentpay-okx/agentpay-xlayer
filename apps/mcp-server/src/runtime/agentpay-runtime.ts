@@ -1,25 +1,25 @@
 import { randomBytes } from "node:crypto";
 
-import type { ExecutePaymentInput } from "@agentpay/shared";
-import type { PreparePaymentInput } from "@agentpay/shared";
-import type { GetBalanceInput } from "@agentpay/shared";
-import type { ListPaymentEventsInput, ListTransactionsInput, TrackPaymentInput } from "@agentpay/shared";
-import type { ParseInvoicePaymentInput } from "@agentpay/shared";
-import type { ParseX402PaymentRequiredInput } from "@agentpay/shared";
-import type { PrepareContractCallInput } from "@agentpay/shared";
-import type { PrepareAccountAdminTransactionInput } from "@agentpay/shared";
-import type { QuotePaymentRouteInput } from "@agentpay/shared";
+import type { ExecutePaymentInput } from "@agentpay-ai/shared";
+import type { PreparePaymentInput } from "@agentpay-ai/shared";
+import type { GetBalanceInput } from "@agentpay-ai/shared";
+import type { ListPaymentEventsInput, ListTransactionsInput, TrackPaymentInput } from "@agentpay-ai/shared";
+import type { ParseInvoicePaymentInput } from "@agentpay-ai/shared";
+import type { ParseX402PaymentRequiredInput } from "@agentpay-ai/shared";
+import type { PrepareContractCallInput } from "@agentpay-ai/shared";
+import type { PrepareAccountAdminTransactionInput } from "@agentpay-ai/shared";
+import type { QuotePaymentRouteInput } from "@agentpay-ai/shared";
 import type {
   CheckWalletCreationInput,
   CheckRouteTargetAllowanceInput,
   GetAgentWalletInput,
   PrepareRouteTargetAllowanceInput,
   PrepareWalletCreationInput,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 import {
   configureStableTokenMetadataOverrides,
   type StableTokenMetadataOverrides,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 import { Wallet } from "ethers";
 
 import { createEthersRuntimeAdapters, type EthersRuntimeConfig } from "../services/chain-executor.ts";

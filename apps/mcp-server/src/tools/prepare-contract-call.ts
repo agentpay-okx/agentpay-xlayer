@@ -7,7 +7,7 @@ import {
   type PaymentIntentRecord,
   type PrepareContractCallInput,
   prepareContractCallInputSchema,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 import type { AgentWalletRepository, PaymentIntentRepository } from "./prepare-payment.ts";
 import { assertSufficientSourceTokenBalance } from "./prepare-payment.ts";

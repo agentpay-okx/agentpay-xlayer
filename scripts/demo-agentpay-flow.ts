@@ -4,8 +4,8 @@ import {
   createAgentPayRuntime,
   type AgentPayRuntimeFactories,
   type AgentWallet,
-} from "@agentpay/mcp-server";
-import type { PaymentEventRecord, PaymentIntentRecord, RouteQuote, SetupIntentRecord } from "@agentpay/shared";
+} from "@agentpay-ai/mcp-server";
+import type { PaymentEventRecord, PaymentIntentRecord, RouteQuote, SetupIntentRecord } from "@agentpay-ai/shared";
 
 import {
   completeWalletSetup,

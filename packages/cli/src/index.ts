@@ -6,13 +6,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { startAgentPayMcpServer, type StartAgentPayMcpServerOptions } from "@agentpay/mcp-server";
+import { startAgentPayMcpServer, type StartAgentPayMcpServerOptions } from "@agentpay-ai/mcp-server";
 import {
   createSetupWebDependencies,
   parseSetupWebEnv,
   startSetupWebServer,
   type SetupWebDependencies,
-} from "@agentpay/setup-web";
+} from "@agentpay-ai/setup-web";
 
 const runtimeNames = ["codex", "claude", "cursor", "generic", "hermes"] as const;
 const requiredConfigKeys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BNB_RPC_URL", "EXECUTOR_PRIVATE_KEY"] as const;
@@ -501,7 +501,7 @@ function resolveAgentPaySkillRoot(packageRoot: string): string {
   }
 
   try {
-    return dirname(require.resolve("@agentpay/skill/package.json"));
+    return dirname(require.resolve("@agentpay-ai/skill/package.json"));
   } catch {
     throw new Error("AgentPay skill package was not found.");
   }

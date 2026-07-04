@@ -9,7 +9,7 @@ import {
   type PaymentType,
   type TrackPaymentInput,
   trackPaymentInputSchema,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 export interface RouteStatusRequest {
   txHash: string;

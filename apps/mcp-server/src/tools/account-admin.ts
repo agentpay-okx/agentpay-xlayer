@@ -2,7 +2,7 @@ import {
   getChainName,
   prepareAccountAdminTransactionInputSchema,
   type PrepareAccountAdminTransactionInput,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 import { Interface } from "ethers";
 
 import type { AgentWalletRepository } from "./prepare-payment.ts";

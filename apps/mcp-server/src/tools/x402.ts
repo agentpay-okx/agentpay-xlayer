@@ -3,7 +3,7 @@ import {
   type ParsedX402PaymentRequired,
   type ParseX402PaymentRequiredInput,
   parseX402PaymentRequiredInputSchema,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 export interface ParseX402PaymentRequiredOutput extends ParsedX402PaymentRequired {
   status: "PARSED";

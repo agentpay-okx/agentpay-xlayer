@@ -1,4 +1,4 @@
-import { type ExecutePaymentInput, executePaymentInputSchema, type PaymentIntentRecord } from "@agentpay/shared";
+import { type ExecutePaymentInput, executePaymentInputSchema, type PaymentIntentRecord } from "@agentpay-ai/shared";
 
 export interface ExecutePaymentIntentRepository {
   getPaymentIntent(paymentIntentId: string): Promise<PaymentIntentRecord | null>;

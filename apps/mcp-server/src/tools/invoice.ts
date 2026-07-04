@@ -2,7 +2,7 @@ import {
   parseInvoicePayment,
   type ParseInvoicePaymentInput,
   parseInvoicePaymentInputSchema,
-} from "@agentpay/shared";
+} from "@agentpay-ai/shared";
 
 export interface ParseInvoicePaymentOutput {
   status: "PARSED";
