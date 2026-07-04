@@ -4,8 +4,6 @@ Chat-approved stablecoin payments for AI agents.
 
 AgentPay is a plugin-first, MCP-first payment runtime that lets an AI agent prepare BNB Chain stablecoin payments while the human keeps approval authority in chat. It supports direct same-chain USDT/USDC transfers, LI.FI swap and bridge routes, invoice parsing, x402 payment normalization, guarded same-chain contract calls, and audit-friendly payment tracking.
 
-`AGENTPAY_CONCEPT.md` is the product blueprint. This repository contains the working TypeScript, Solidity, Supabase, and npm package implementation.
-
 ## Quick Start
 
 Install AgentPay into a Codex, Claude, Cursor, Hermes, or generic MCP runtime:
@@ -127,4 +125,4 @@ Use `npm run contracts:bytecode` when developing contracts and refreshing the pa
 - `@agentpay-ai/mcp-server` - MCP server runtime and tools.
 - `@agentpay-ai/setup-web` - setup and signing web server.
 
-Use `AGENTPAY_CONCEPT.md` for the product blueprint. External launch steps still require explicit operator approval for Supabase setup, BNB testnet deployment, npm publishing, and demo capture.
+External launch steps still require explicit operator approval for Supabase setup, BNB testnet deployment, npm publishing, and demo capture.

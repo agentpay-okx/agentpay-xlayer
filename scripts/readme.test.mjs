@@ -19,6 +19,8 @@ describe("README", () => {
     assert.match(contents, /apps\/mcp-server/);
     assert.match(contents, /packages\/cli/);
     assert.doesNotMatch(contents, /docs\//);
+    assert.doesNotMatch(contents, /AGENTPAY_CONCEPT/);
+    assert.doesNotMatch(contents, /product blueprint/i);
     assert.doesNotMatch(quickStart, /agentpay doctor/i);
     assert.doesNotMatch(quickStart, /agentpay setup-web/i);
   });

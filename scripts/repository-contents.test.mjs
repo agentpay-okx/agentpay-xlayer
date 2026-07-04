@@ -15,6 +15,12 @@ describe("repository contents", () => {
       .filter(Boolean);
 
     assert.equal(trackedFiles.includes("AGENTS.md"), false);
+    assert.equal(trackedFiles.includes("AGENTPAY_CONCEPT.md"), false);
+    assert.equal(trackedFiles.includes("apps/setup-web/PRODUCT.md"), false);
     assert.equal(trackedFiles.some((file) => file.startsWith("docs/")), false);
+    assert.equal(
+      trackedFiles.some((file) => /(^|\/)(?:.*concept.*|PRODUCT\.md)$/i.test(file)),
+      false,
+    );
   });
 });

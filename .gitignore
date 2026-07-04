@@ -13,4 +13,6 @@ contracts/broadcast/
 .DS_Store
 .worktrees/
 /AGENTS.md
+/AGENTPAY_CONCEPT.md
 /docs/
+**/PRODUCT.md
