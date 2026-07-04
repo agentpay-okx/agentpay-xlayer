@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "agentpay": "./dist/index.js"
+    "agentpay": "dist/index.js"
   },
   "files": [
     "assets/",

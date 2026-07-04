@@ -116,4 +116,10 @@ describe("publishable AgentPay package manifests", () => {
 
     assert.equal(result.status, 1, "packages/cli/dist/index.js must not be ignored");
   });
+
+  it("keeps the CLI bin path in npm publish-normalized form", async () => {
+    const manifest = await readPackageJson("packages/cli");
+
+    assert.equal(manifest.bin?.agentpay, "dist/index.js");
+  });
 });
