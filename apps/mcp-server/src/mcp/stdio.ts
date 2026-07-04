@@ -50,7 +50,7 @@ export async function startAgentPayMcpServer(options: StartAgentPayMcpServerOpti
 function createSdkMcpServer(): ConnectableAgentPayMcpServer {
   const server = new McpServer({
     name: "agentpay",
-    version: "0.1.0",
+    version: "0.1.1",
   });
 
   return server as unknown as ConnectableAgentPayMcpServer;

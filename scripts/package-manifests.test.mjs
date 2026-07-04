@@ -53,6 +53,8 @@ describe("publishable AgentPay package manifests", () => {
       assert.notEqual(manifest.private, true, `${packageDir} must be publishable`);
       assert.ok(Array.isArray(manifest.files), `${packageDir} must explicitly whitelist package files`);
       assert.ok(manifest.files.length > 0, `${packageDir} must include package files`);
+      assert.ok(manifest.files.includes("README.md"), `${packageDir} must publish its npm README.md`);
+      await access(join(packageDir, "README.md"));
 
       for (const filePattern of manifest.files) {
         assert.doesNotMatch(filePattern, /\.test\./, `${packageDir} must not publish test files`);
@@ -95,7 +97,7 @@ describe("publishable AgentPay package manifests", () => {
         ethers: rootManifest.dependencies.ethers,
       },
       "@agentpay-ai/agentpay": {
-        "@agentpay-ai/skill": "0.1.0",
+        "@agentpay-ai/skill": "0.1.1",
       },
     };
 

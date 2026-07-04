@@ -1,11 +1,12 @@
 {
   "name": "@agentpay-ai/shared",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "files": [
+    "README.md",
     "src/account-admin.ts",
     "src/approval.ts",
     "src/balance.ts",
