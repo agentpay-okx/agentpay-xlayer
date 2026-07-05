@@ -2,7 +2,7 @@
 
 Chat-approved stablecoin payments for AI agents.
 
-AgentPay is a plugin-first, MCP-first payment runtime that lets an AI agent prepare X Layer stablecoin payments while the human keeps approval authority in chat. It supports direct same-chain USDT0/USDC transfers, LI.FI swap and bridge routes, invoice parsing, x402 payment parsing plus AgentPay receipt-proof retry, guarded same-chain contract calls, and audit-friendly payment tracking.
+AgentPay is a plugin-first, MCP-first payment runtime that lets an AI agent prepare X Layer stablecoin payments while the human keeps approval authority in chat. It supports direct same-chain USDT0/USDC transfers, LI.FI swap and bridge routes, invoice parsing, x402 Bazaar service discovery, x402 payment parsing plus AgentPay receipt-proof retry, guarded same-chain contract calls, and audit-friendly payment tracking.
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ Wallet setup is driven from chat:
 
 Payments also stay in chat:
 
-1. The user asks to pay a wallet, invoice, x402 prompt, route, or supported contract call.
+1. The user asks to pay a wallet, invoice, x402 prompt, paid API/service without a URL, route, or supported contract call.
 2. The agent confirms or carries forward the selected X Layer network, checks balance, parses inputs, quotes routes when useful, and calls `prepare_payment` or `prepare_contract_call`.
 3. The agent shows recipient, amount, token, chain, route, max spend, max native fee, deadline, purpose, and the exact approval phrase.
 4. The user must reply with the exact phrase, for example `APPROVE pay_123`.
@@ -52,7 +52,7 @@ AgentPay separates ownership from execution.
 - Executor: the relayer wallet that submits prepared payment transactions. It can execute only through AgentPay's guarded smart account methods and only after exact chat approval.
 - Smart account guards: token allowlists, route-target allowlists, nonce checks, deadlines, max token spend, max native fee, calldata hash checks, balance checks, pause control, and approval reset after guarded calls.
 - Offchain guards: Supabase stores setup intents, payment intents, approval phrases, status transitions, and `payment_events` audit history.
-- x402 support parses v2 `PAYMENT-REQUIRED`, executes an approved AgentPay payment, and can retry the protected resource with `X-PAYMENT` / `PAYMENT-SIGNATURE` headers containing an AgentPay receipt proof. The retry reads the V2 `PAYMENT-RESPONSE` header, keeps legacy `X-PAYMENT-RESPONSE` fallback, and appends `payment-identifier` idempotency data when the server advertises it. Strict standard x402 exact endpoints must support that AgentPay receipt proof bridge or use their native signer/facilitator path.
+- x402 support can search Bazaar with `search_x402_services` when the user does not provide a URL, prepare the selected service with `prepare_x402_service_request`, parse v2 `PAYMENT-REQUIRED`, execute an approved AgentPay payment, and retry the protected resource with `X-PAYMENT` / `PAYMENT-SIGNATURE` headers containing an AgentPay receipt proof. The retry reads the V2 `PAYMENT-RESPONSE` header, keeps legacy `X-PAYMENT-RESPONSE` fallback, and appends `payment-identifier` idempotency data when the server advertises it. Strict standard x402 exact endpoints must support that AgentPay receipt proof bridge or use their native signer/facilitator path.
 
 `doctor` and `setup-web` are helper commands, not the main user flow. Use `npx @agentpay-ai/agentpay doctor` for diagnostics and `npx @agentpay-ai/agentpay setup-web` only as a fallback when the setup page needs to be served manually.
 
@@ -106,6 +106,8 @@ The generated config and server environment use these core values:
 - `AGENTPAY_ACCOUNT_BYTECODE_PATH` or `AGENTPAY_ACCOUNT_BYTECODE`
 
 Optional values include `SETUP_WEB_URL`, `LIFI_API_KEY`, `AGENTPAY_OWNER_ADDRESS`, `AGENTPAY_EXECUTOR_ADDRESS`, `AGENTPAY_HOME_CHAIN_ID`, X Layer token overrides, `AGENTPAY_INITIAL_ROUTE_TARGETS`, and `SETUP_WEB_PORT`.
+
+Use `X402_BAZAAR_FACILITATOR_URL` to override the default x402 Bazaar facilitator.
 
 Keep private keys and Supabase service-role keys server-side. Never paste secrets into chat.
 

@@ -23,6 +23,8 @@ describe("createAgentPayMcpServer", () => {
       "get_agent_wallet",
       "get_balance",
       "parse_invoice_payment",
+      "search_x402_services",
+      "prepare_x402_service_request",
       "parse_x402_payment_required",
       "retry_x402_request",
       "prepare_contract_call",
@@ -98,6 +100,12 @@ function createRuntime(): AgentPayRuntime {
     },
     async parseInvoicePayment() {
       throw new Error("parseInvoicePayment was not expected.");
+    },
+    async searchX402Services() {
+      throw new Error("searchX402Services was not expected.");
+    },
+    async prepareX402ServiceRequest() {
+      throw new Error("prepareX402ServiceRequest was not expected.");
     },
     async parseX402PaymentRequired() {
       throw new Error("parseX402PaymentRequired was not expected.");

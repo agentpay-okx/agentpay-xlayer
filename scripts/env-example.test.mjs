@@ -26,6 +26,7 @@ const expectedKeys = [
   "SETUP_WEB_PORT",
   "LIFI_API_KEY",
   "LIFI_BASE_URL",
+  "X402_BAZAAR_FACILITATOR_URL",
 ];
 
 function parseEnvExampleKeys(contents) {

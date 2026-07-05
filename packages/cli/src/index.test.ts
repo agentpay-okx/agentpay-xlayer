@@ -80,6 +80,7 @@ describe("installAgentPay", () => {
       assert.match(skill, /Requires exact chat approval before execution/);
       assert.match(skillMetadata, /display_name: AgentPay/);
       assert.equal("AGENTPAY_INITIAL_ROUTE_TARGETS" in config, true);
+      assert.equal("X402_BAZAAR_FACILITATOR_URL" in config, true);
       assert.equal("SETUP_WEB_PORT" in config, true);
       assert.equal(mcpConfig.mcpServers.agentpay.command, "npx");
       assert.deepEqual(mcpConfig.mcpServers.agentpay.args, ["-y", "@agentpay-ai/agentpay", "mcp"]);
@@ -134,6 +135,9 @@ describe("installAgentPay", () => {
         assert.match(instructions, /AgentPayAccount\.bin/, runtime);
         assert.match(instructions, /parse_invoice_payment/, runtime);
         assert.match(instructions, /parse_x402_payment_required/, runtime);
+        assert.match(instructions, /search_x402_services/, runtime);
+        assert.match(instructions, /prepare_x402_service_request/, runtime);
+        assert.match(instructions, /no URL|without a URL|does not provide a URL/i, runtime);
         assert.match(instructions, /check_route_target_allowance/, runtime);
         assert.match(instructions, /prepare_route_target_allowance/, runtime);
         assert.match(instructions, /exact approval phrase/i, runtime);

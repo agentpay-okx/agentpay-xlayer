@@ -6,6 +6,7 @@ export * from "./mcp/stdio.ts";
 export * from "./runtime/agentpay-runtime.ts";
 export * from "./services/lifi.ts";
 export * from "./services/supabase.ts";
+export * from "./services/x402-bazaar.ts";
 export * from "./tools/account-admin.ts";
 export * from "./tools/execute-payment.ts";
 export * from "./tools/get-balance.ts";
@@ -17,6 +18,7 @@ export * from "./tools/quote-payment-route.ts";
 export * from "./tools/route-target-allowance.ts";
 export * from "./tools/wallet-setup.ts";
 export * from "./tools/x402.ts";
+export * from "./tools/x402-bazaar.ts";
 
 import { startAgentPayMcpServer } from "./mcp/stdio.ts";
 

@@ -72,6 +72,8 @@ Expected AgentPay tools:
 - `get_agent_wallet`: return owner, executor, smart account address, home chain, and status.
 - `get_balance`: read USDT/USDC and relevant native balances.
 - `parse_invoice_payment`: parse structured invoice text into `prepare_payment` fields.
+- `search_x402_services`: search x402 Bazaar when the user wants a paid API/service but does not provide a URL.
+- `prepare_x402_service_request`: prepare a selected x402 Bazaar HTTP resource and synthetic `PAYMENT-REQUIRED` object.
 - `parse_x402_payment_required`: parse a v2 x402 `PAYMENT-REQUIRED` object or header into `prepare_payment` fields.
 - `retry_x402_request`: retry a protected x402 HTTP resource with AgentPay receipt-proof headers after the matching payment is complete.
 - `prepare_contract_call`: prepare a guarded same-chain contract call intent with calldata hash review.
@@ -136,6 +138,8 @@ When the user asks to pay an invoice:
 Do not infer missing invoice fields from vague prose. Ask the user for a complete invoice or the missing field.
 
 ## x402 Workflow
+
+If the user asks for a paid x402/API service but does not provide a URL, call `search_x402_services` first. Show the Bazaar candidates, ask the user to choose one, collect required parameters, then call `prepare_x402_service_request`. Use the returned `paymentRequired` and `request` with the normal x402 flow below.
 
 When an HTTP endpoint returns an x402 v2 `PAYMENT-REQUIRED` response:
 

@@ -34,7 +34,7 @@ AgentPay supports X Layer mainnet and testnet. If you do not name one, the agent
 
 The agent should use AgentPay tools in chat to create the wallet setup link, check wallet creation, prepare payments, request the exact approval phrase, execute after exact approval, and track status.
 
-For x402 paid APIs, the agent parses the `PAYMENT-REQUIRED` response, runs the same exact-approval payment flow, then calls `retry_x402_request` to retry the protected resource with AgentPay receipt-proof headers. The retry reads V2 `PAYMENT-RESPONSE`, keeps legacy fallback, and includes `payment-identifier` idempotency data when the server advertises it.
+For x402 paid APIs, the agent uses `search_x402_services` when you do not provide a URL, prepares the selected Bazaar service with `prepare_x402_service_request`, parses the `PAYMENT-REQUIRED` response, runs the same exact-approval payment flow, then calls `retry_x402_request` to retry the protected resource with AgentPay receipt-proof headers. The retry reads V2 `PAYMENT-RESPONSE`, keeps legacy fallback, and includes `payment-identifier` idempotency data when the server advertises it.
 
 ## Commands
 
@@ -54,7 +54,7 @@ Fill the generated config or provide equivalent environment variables:
 - `EXECUTOR_PRIVATE_KEY`
 - `SETUP_DEPLOYER_PRIVATE_KEY` for setup web
 
-Optional values include `SETUP_WEB_URL`, `LIFI_API_KEY`, `AGENTPAY_ACCOUNT_BYTECODE_PATH`, `AGENTPAY_INITIAL_ROUTE_TARGETS`, and X Layer token overrides.
+Optional values include `SETUP_WEB_URL`, `LIFI_API_KEY`, `X402_BAZAAR_FACILITATOR_URL`, `AGENTPAY_ACCOUNT_BYTECODE_PATH`, `AGENTPAY_INITIAL_ROUTE_TARGETS`, and X Layer token overrides.
 
 ## Safety Model
 

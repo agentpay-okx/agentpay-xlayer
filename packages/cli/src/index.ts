@@ -42,6 +42,7 @@ const optionalConfigKeys = [
   "AGENTPAY_ACCOUNT_BYTECODE",
   "AGENTPAY_INITIAL_ROUTE_TARGETS",
   "SETUP_WEB_PORT",
+  "X402_BAZAAR_FACILITATOR_URL",
 ] as const;
 const privateKeyPattern = /^0x[a-fA-F0-9]{64}$/;
 const hexDataPattern = /^0x(?:[a-fA-F0-9]{2})+$/;
@@ -319,6 +320,9 @@ function validateMcpConfig(env: Record<string, string | undefined>): AgentPayDoc
       ? "EXECUTOR_PRIVATE_KEY"
       : undefined,
     env.LIFI_BASE_URL && !isHttpUrl(env.LIFI_BASE_URL) ? "LIFI_BASE_URL" : undefined,
+    env.X402_BAZAAR_FACILITATOR_URL && !isHttpUrl(env.X402_BAZAAR_FACILITATOR_URL)
+      ? "X402_BAZAAR_FACILITATOR_URL"
+      : undefined,
     env.SETUP_WEB_URL && !isHttpUrl(env.SETUP_WEB_URL) ? "SETUP_WEB_URL" : undefined,
   ].filter((name): name is string => Boolean(name));
 

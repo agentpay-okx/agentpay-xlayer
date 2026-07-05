@@ -8,3 +8,4 @@ export * from "./payment-tracking.ts";
 export * from "./tokens.ts";
 export * from "./wallet-setup.ts";
 export * from "./x402.ts";
+export * from "./x402-bazaar.ts";

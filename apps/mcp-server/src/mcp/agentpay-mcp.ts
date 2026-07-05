@@ -8,6 +8,7 @@ import {
   listTransactionsInputSchema,
   parseInvoicePaymentInputSchema,
   parseX402PaymentRequiredInputSchema,
+  prepareX402ServiceRequestInputSchema,
   prepareAccountAdminTransactionInputSchema,
   prepareContractCallInputSchema,
   preparePaymentInputSchema,
@@ -15,6 +16,7 @@ import {
   prepareWalletCreationInputSchema,
   quotePaymentRouteInputSchema,
   retryX402RequestInputSchema,
+  searchX402ServicesInputSchema,
   trackPaymentInputSchema,
 } from "@agentpay-ai/shared";
 
@@ -23,6 +25,7 @@ import { prepareAccountAdminTransactionTool } from "../tools/account-admin.ts";
 import { executePaymentTool } from "../tools/execute-payment.ts";
 import { getBalanceTool } from "../tools/get-balance.ts";
 import { parseInvoicePaymentTool } from "../tools/invoice.ts";
+import { prepareX402ServiceRequestTool, searchX402ServicesTool } from "../tools/x402-bazaar.ts";
 import { parseX402PaymentRequiredTool, retryX402RequestTool } from "../tools/x402.ts";
 import { listPaymentEventsTool, listTransactionsTool, trackPaymentTool } from "../tools/payment-tracking.ts";
 import { prepareContractCallTool } from "../tools/prepare-contract-call.ts";
@@ -101,6 +104,27 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
       inputSchema: parseInvoicePaymentInputSchema.shape,
     },
     async (input) => toMcpResult(await runtime.parseInvoicePayment(parseInvoicePaymentInputSchema.parse(input))),
+  );
+
+  server.registerTool(
+    searchX402ServicesTool.name,
+    {
+      title: "Search x402 Services",
+      description: searchX402ServicesTool.description,
+      inputSchema: searchX402ServicesTool.inputSchema,
+    },
+    async (input) => toMcpResult(await runtime.searchX402Services(searchX402ServicesInputSchema.parse(input))),
+  );
+
+  server.registerTool(
+    prepareX402ServiceRequestTool.name,
+    {
+      title: "Prepare x402 Service Request",
+      description: prepareX402ServiceRequestTool.description,
+      inputSchema: prepareX402ServiceRequestTool.inputSchema,
+    },
+    async (input) =>
+      toMcpResult(await runtime.prepareX402ServiceRequest(prepareX402ServiceRequestInputSchema.parse(input))),
   );
 
   server.registerTool(

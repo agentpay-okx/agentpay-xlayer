@@ -14,6 +14,7 @@
     "src/services/chain-executor.ts",
     "src/services/lifi.ts",
     "src/services/supabase.ts",
+    "src/services/x402-bazaar.ts",
     "src/tools/account-admin.ts",
     "src/tools/execute-payment.ts",
     "src/tools/get-balance.ts",
@@ -24,7 +25,8 @@
     "src/tools/quote-payment-route.ts",
     "src/tools/route-target-allowance.ts",
     "src/tools/wallet-setup.ts",
-    "src/tools/x402.ts"
+    "src/tools/x402.ts",
+    "src/tools/x402-bazaar.ts"
   ],
   "publishConfig": {
     "access": "public"

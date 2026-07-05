@@ -307,6 +307,15 @@ function createDemoFactories(state: DemoState): AgentPayRuntimeFactories {
         },
       };
     },
+    createX402BazaarDiscovery() {
+      return {
+        async search() {
+          return {
+            resources: [],
+          };
+        },
+      };
+    },
     createChainAdapters() {
       return {
         balances: {

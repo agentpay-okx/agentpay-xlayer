@@ -276,6 +276,49 @@ describe("createAgentPayRuntime", () => {
           },
         };
       },
+      createX402BazaarDiscovery(config) {
+        calls.push(["x402Bazaar", config]);
+        return {
+          async search(request) {
+            calls.push(["searchX402Services", request]);
+            return {
+              resources: [
+                {
+                  resource: "https://api.market.example.com/prices",
+                  type: "http",
+                  x402Version: 2,
+                  serviceName: "Market Bazaar",
+                  description: "Paid market prices",
+                  lastUpdated: "2026-07-05T08:00:00.000Z",
+                  accepts: [
+                    {
+                      scheme: "exact",
+                      network: "eip155:196",
+                      amount: "250000",
+                      asset: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+                      payTo: "0x1111111111111111111111111111111111111111",
+                      maxTimeoutSeconds: 60,
+                    },
+                  ],
+                  extensions: {
+                    bazaar: {
+                      info: {
+                        input: {
+                          type: "http",
+                          method: "GET",
+                          queryParams: {
+                            symbol: "BTC-USDT",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            };
+          },
+        };
+      },
       createChainAdapters(config) {
         calls.push(["ethers", config]);
         return {
@@ -337,6 +380,7 @@ describe("createAgentPayRuntime", () => {
         },
         executorPrivateKey: validPrivateKey,
         lifiApiKey: "lifi-key",
+        x402BazaarFacilitatorUrl: "https://facilitator.example.com",
         setupWebUrl: "https://setup.agentpay.dev/setup",
       },
       {
@@ -380,6 +424,16 @@ describe("createAgentPayRuntime", () => {
     });
     const x402 = await runtime.parseX402PaymentRequired({
       paymentRequired: JSON.stringify(x402PaymentRequired),
+    });
+    const x402Services = await runtime.searchX402Services({
+      query: "okx market data",
+      limit: 3,
+    });
+    const x402ServiceRequest = await runtime.prepareX402ServiceRequest({
+      resource: x402Services.results[0]!.resource,
+      parameters: {
+        symbol: "ETH-USDT",
+      },
     });
     const retriedX402 = await runtime.retryX402Request({
       paymentRequired: x402PaymentRequired,
@@ -454,6 +508,11 @@ describe("createAgentPayRuntime", () => {
     assert.equal(x402.resource.serviceName, "Market API");
     assert.equal(x402.paymentInput.destinationChain, "Base");
     assert.equal(x402.standardX402SignatureRequired, true);
+    assert.equal(x402Services.status, "FOUND");
+    assert.equal(x402Services.results[0]?.serviceName, "Market Bazaar");
+    assert.equal(x402ServiceRequest.status, "REQUEST_READY");
+    assert.equal(x402ServiceRequest.request?.url, "https://api.market.example.com/prices?symbol=ETH-USDT");
+    assert.equal(x402ServiceRequest.paymentRequired?.resource.url, "https://api.market.example.com/prices?symbol=ETH-USDT");
     assert.equal(retriedX402.status, "RESOURCE_FETCHED");
     assert.equal(retriedX402.httpStatus, 200);
     assert.equal(retriedX402.paymentResponse, "settled");
@@ -486,7 +545,7 @@ describe("createAgentPayRuntime", () => {
         createdAt: "2026-07-02T14:30:00.000Z",
       },
     ]);
-    assert.deepEqual(calls.slice(0, 3), [
+    assert.deepEqual(calls.slice(0, 4), [
       [
         "supabase",
         {
@@ -510,6 +569,12 @@ describe("createAgentPayRuntime", () => {
             1952: "https://testnet.xlayer.tech",
           },
           executorPrivateKey: validPrivateKey,
+        },
+      ],
+      [
+        "x402Bazaar",
+        {
+          facilitatorUrl: "https://facilitator.example.com",
         },
       ],
     ]);

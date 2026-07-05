@@ -44,6 +44,8 @@ describe("registerAgentPayMcpTools", () => {
       "get_agent_wallet",
       "get_balance",
       "parse_invoice_payment",
+      "search_x402_services",
+      "prepare_x402_service_request",
       "parse_x402_payment_required",
       "retry_x402_request",
       "prepare_contract_call",
@@ -81,6 +83,121 @@ describe("registerAgentPayMcpTools", () => {
         homeChain: "X Layer",
       },
     });
+  });
+
+  it("registers x402 Bazaar discovery tools for users who do not provide a URL", async () => {
+    const server = new FakeMcpServer();
+    const runtime = createRuntime({
+      async searchX402Services(input) {
+        assert.deepEqual(input, {
+          query: "okx market data",
+          type: "http",
+          limit: 5,
+        });
+        return {
+          status: "FOUND",
+          query: "okx market data",
+          type: "http",
+          results: [
+            {
+              resourceUrl: "https://api.market.example.com/prices",
+              type: "http",
+              serviceName: "Market Bazaar",
+              description: "Paid market prices",
+              method: "GET",
+              requiredParameters: ["symbol"],
+              accepts: [
+                {
+                  scheme: "exact",
+                  network: "eip155:196",
+                  amount: "250000",
+                  asset: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+                  payTo: "0x1111111111111111111111111111111111111111",
+                  maxTimeoutSeconds: 60,
+                },
+              ],
+              resource: {
+                resource: "https://api.market.example.com/prices",
+                type: "http",
+                x402Version: 2,
+                serviceName: "Market Bazaar",
+              description: "Paid market prices",
+              lastUpdated: "2026-07-05T08:00:00.000Z",
+                accepts: [
+                  {
+                    scheme: "exact",
+                    network: "eip155:196",
+                    amount: "250000",
+                    asset: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+                    payTo: "0x1111111111111111111111111111111111111111",
+                    maxTimeoutSeconds: 60,
+                  },
+                ],
+              },
+            },
+          ],
+          instructionToAgent:
+            "Ask the user to choose a service, then call prepare_x402_service_request with the selected resource.",
+        };
+      },
+      async prepareX402ServiceRequest(input) {
+        assert.equal(input.parameters?.symbol, "ETH-USDT");
+        return {
+          status: "REQUEST_READY",
+          request: {
+            url: "https://api.market.example.com/prices?symbol=ETH-USDT",
+            method: "GET",
+            headers: {},
+          },
+          paymentRequired: {
+            x402Version: 2,
+            resource: {
+              url: "https://api.market.example.com/prices?symbol=ETH-USDT",
+              description: "Paid market prices",
+              serviceName: "Market Bazaar",
+            },
+            accepts: [
+              {
+                scheme: "exact",
+                network: "eip155:196",
+                amount: "250000",
+                asset: "0x779Ded0c9e1022225f8E0630b35a9b54bE713736",
+                payTo: "0x1111111111111111111111111111111111111111",
+                maxTimeoutSeconds: 60,
+              },
+            ],
+          },
+          missingParameters: [],
+          instructionToAgent:
+            "Call parse_x402_payment_required with paymentRequired, then run exact approval before retry_x402_request.",
+        };
+      },
+    });
+
+    registerAgentPayMcpTools(server, runtime);
+
+    const search = server.tools.get("search_x402_services");
+    const prepare = server.tools.get("prepare_x402_service_request");
+    assert.ok(search);
+    assert.ok(prepare);
+    assert.match(String(search.metadata.description), /Bazaar/i);
+    assert.match(String(prepare.metadata.description), /Bazaar/i);
+
+    const searchResult = await search.handler({ query: "okx market data" });
+    const selected = (
+      searchResult as {
+        structuredContent: { results: Array<{ resource: unknown }> };
+      }
+    ).structuredContent.results[0]!.resource;
+    const prepareResult = await prepare.handler({
+      resource: selected,
+      parameters: {
+        symbol: "ETH-USDT",
+      },
+    });
+
+    assert.match(JSON.stringify(searchResult), /prepare_x402_service_request/);
+    assert.match(JSON.stringify(prepareResult), /parse_x402_payment_required/);
   });
 
   it("registers get_balance and returns structured balance content", async () => {
@@ -926,6 +1043,12 @@ function createRuntime(overrides: Partial<AgentPayRuntime>): AgentPayRuntime {
     },
     async parseInvoicePayment() {
       throw new Error("parseInvoicePayment was not expected.");
+    },
+    async searchX402Services() {
+      throw new Error("searchX402Services was not expected.");
+    },
+    async prepareX402ServiceRequest() {
+      throw new Error("prepareX402ServiceRequest was not expected.");
     },
     async parseX402PaymentRequired() {
       throw new Error("parseX402PaymentRequired was not expected.");

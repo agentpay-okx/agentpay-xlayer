@@ -7,6 +7,7 @@ import type { ListPaymentEventsInput, ListTransactionsInput, TrackPaymentInput }
 import type { ParseInvoicePaymentInput } from "@agentpay-ai/shared";
 import type { ParseX402PaymentRequiredInput } from "@agentpay-ai/shared";
 import type { RetryX402RequestInput } from "@agentpay-ai/shared";
+import type { PrepareX402ServiceRequestInput, SearchX402ServicesInput } from "@agentpay-ai/shared";
 import type { PrepareContractCallInput } from "@agentpay-ai/shared";
 import type { PrepareAccountAdminTransactionInput } from "@agentpay-ai/shared";
 import type { QuotePaymentRouteInput } from "@agentpay-ai/shared";
@@ -33,11 +34,19 @@ import {
   createSupabaseAgentPayRepositoriesFromConfig,
   type SupabaseRuntimeConfig,
 } from "../services/supabase.ts";
+import {
+  createX402BazaarDiscoveryProvider,
+  type X402BazaarDiscoveryProviderConfig,
+} from "../services/x402-bazaar.ts";
 import { createExecutePaymentHandler } from "../tools/execute-payment.ts";
 import type { ExecutePaymentDependencies } from "../tools/execute-payment.ts";
 import { createGetBalanceHandler } from "../tools/get-balance.ts";
 import type { GetBalanceDependencies } from "../tools/get-balance.ts";
 import { createParseInvoicePaymentHandler } from "../tools/invoice.ts";
+import {
+  createPrepareX402ServiceRequestHandler,
+  createSearchX402ServicesHandler,
+} from "../tools/x402-bazaar.ts";
 import { createParseX402PaymentRequiredHandler, createRetryX402RequestHandler } from "../tools/x402.ts";
 import { createPrepareAccountAdminTransactionHandler } from "../tools/account-admin.ts";
 import type { PrepareAccountAdminTransactionDependencies } from "../tools/account-admin.ts";
@@ -90,6 +99,7 @@ export interface AgentPayRuntimeConfig {
   executorPrivateKey: string;
   lifiApiKey?: string;
   lifiBaseUrl?: string;
+  x402BazaarFacilitatorUrl?: string;
   setupWebUrl?: string;
   homeChainId?: number;
   stableTokenOverrides?: StableTokenMetadataOverrides;
@@ -106,6 +116,9 @@ export interface AgentPayRuntimeFactories {
   };
   createRoutes(config: LifiRouteQuoteProviderConfig): PreparePaymentDependencies["routes"] &
     TrackPaymentDependencies["routeStatuses"];
+  createX402BazaarDiscovery(config: X402BazaarDiscoveryProviderConfig): ReturnType<
+    typeof createX402BazaarDiscoveryProvider
+  >;
   createChainAdapters(config: EthersRuntimeConfig): Pick<ExecutePaymentDependencies, "balances" | "executor"> & {
     sourceTransactions: TrackPaymentDependencies["sourceTransactions"];
     tokenBalances: GetBalanceDependencies["tokenBalances"];
@@ -117,6 +130,7 @@ export interface AgentPayRuntimeFactories {
 export interface AgentPayRuntimeOptions {
   fetch?: typeof fetch;
   x402Fetch?: typeof fetch;
+  x402BazaarFetch?: typeof fetch;
   clock?: () => Date;
   createId?: () => string;
   createNonce?: () => string;
@@ -133,6 +147,10 @@ export interface AgentPayRuntime {
   getAgentWallet(input: GetAgentWalletInput): ReturnType<ReturnType<typeof createGetAgentWalletHandler>>;
   getBalance(input: GetBalanceInput): ReturnType<ReturnType<typeof createGetBalanceHandler>>;
   parseInvoicePayment(input: ParseInvoicePaymentInput): ReturnType<ReturnType<typeof createParseInvoicePaymentHandler>>;
+  searchX402Services(input: SearchX402ServicesInput): ReturnType<ReturnType<typeof createSearchX402ServicesHandler>>;
+  prepareX402ServiceRequest(
+    input: PrepareX402ServiceRequestInput,
+  ): ReturnType<ReturnType<typeof createPrepareX402ServiceRequestHandler>>;
   parseX402PaymentRequired(
     input: ParseX402PaymentRequiredInput,
   ): ReturnType<ReturnType<typeof createParseX402PaymentRequiredHandler>>;
@@ -176,6 +194,9 @@ export function parseAgentPayEnv(env: NodeJS.ProcessEnv | Record<string, string 
       ? "EXECUTOR_PRIVATE_KEY"
       : undefined,
     normalized.LIFI_BASE_URL && !isHttpUrl(normalized.LIFI_BASE_URL) ? "LIFI_BASE_URL" : undefined,
+    normalized.X402_BAZAAR_FACILITATOR_URL && !isHttpUrl(normalized.X402_BAZAAR_FACILITATOR_URL)
+      ? "X402_BAZAAR_FACILITATOR_URL"
+      : undefined,
     normalized.SETUP_WEB_URL && !isHttpUrl(normalized.SETUP_WEB_URL) ? "SETUP_WEB_URL" : undefined,
     normalized.AGENTPAY_HOME_CHAIN_ID && !homeChainId ? "AGENTPAY_HOME_CHAIN_ID" : undefined,
     ...validateStableTokenOverrideAddresses(normalized),
@@ -193,6 +214,7 @@ export function parseAgentPayEnv(env: NodeJS.ProcessEnv | Record<string, string 
     executorPrivateKey: normalized.EXECUTOR_PRIVATE_KEY,
     lifiApiKey: normalized.LIFI_API_KEY,
     lifiBaseUrl: normalized.LIFI_BASE_URL,
+    x402BazaarFacilitatorUrl: normalized.X402_BAZAAR_FACILITATOR_URL,
     setupWebUrl: normalized.SETUP_WEB_URL,
     homeChainId,
     stableTokenOverrides,
@@ -223,6 +245,12 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
     rpcUrls: config.xlayerRpcUrls,
     executorPrivateKey: config.executorPrivateKey,
   });
+  const x402BazaarDiscovery = factories.createX402BazaarDiscovery(
+    omitUndefined({
+      facilitatorUrl: config.x402BazaarFacilitatorUrl,
+      fetch: options.x402BazaarFetch ?? options.fetch,
+    }) as X402BazaarDiscoveryProviderConfig,
+  );
   const executorAddress = options.executorAddress ?? new Wallet(config.executorPrivateKey).address;
 
   return {
@@ -252,6 +280,10 @@ export function createAgentPayRuntime(config: AgentPayRuntimeConfig, options: Ag
       homeChainId: config.homeChainId,
     }),
     parseInvoicePayment: createParseInvoicePaymentHandler(),
+    searchX402Services: createSearchX402ServicesHandler({
+      discovery: x402BazaarDiscovery,
+    }),
+    prepareX402ServiceRequest: createPrepareX402ServiceRequestHandler(),
     parseX402PaymentRequired: createParseX402PaymentRequiredHandler(),
     retryX402Request: createRetryX402RequestHandler({
       paymentIntents: repositories.paymentIntents,
@@ -342,6 +374,7 @@ const defaultAgentPayRuntimeFactories: AgentPayRuntimeFactories = {
       ...createLifiRouteStatusProvider(config),
     };
   },
+  createX402BazaarDiscovery: createX402BazaarDiscoveryProvider,
   createChainAdapters: createEthersRuntimeAdapters,
 };
 

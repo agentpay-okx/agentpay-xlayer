@@ -17,7 +17,8 @@
     "src/payment-tracking.ts",
     "src/tokens.ts",
     "src/wallet-setup.ts",
-    "src/x402.ts"
+    "src/x402.ts",
+    "src/x402-bazaar.ts"
   ],
   "publishConfig": {
     "access": "public"
