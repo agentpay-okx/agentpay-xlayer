@@ -40,8 +40,11 @@ For x402 paid APIs, the agent uses `search_x402_services` when you do not provid
 
 - `agentpay install` creates local AgentPay runtime files.
 - `agentpay mcp` starts the AgentPay MCP server over stdio.
+- `agentpay serve-http --host 0.0.0.0 --port 3001` starts the Streamable HTTP MCP server for public HTTPS A2MCP deployments.
 - `agentpay doctor` is a diagnostic check for required config without printing secrets.
 - `agentpay setup-web` is a fallback way to serve the setup/signing web server when the agent cannot start it for you.
+
+For OKX.AI A2MCP listing, run `agentpay serve-http` behind your HTTPS domain or reverse proxy and register the public `/mcp` URL. The built-in `/healthz` route returns readiness metadata for platform health checks.
 
 ## Required Configuration
 

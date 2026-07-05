@@ -43,6 +43,14 @@ describe("parseCliArgs", () => {
       command: "setup-web",
     });
   });
+
+  it("parses serve-http command", () => {
+    assert.deepEqual(parseCliArgs(["serve-http", "--host", "0.0.0.0", "--port", "8080"]), {
+      command: "serve-http",
+      hostname: "0.0.0.0",
+      port: 8080,
+    });
+  });
 });
 
 describe("installAgentPay", () => {
@@ -398,5 +406,50 @@ describe("runAgentPayCli", () => {
     assert.equal(exitCode, 0);
     assert.deepEqual(started, [{ port: 3333 }]);
     assert.match(stdoutLines.join("\n"), /AgentPay setup web listening at http:\/\/127\.0\.0\.1:3333\/setup/);
+  });
+
+  it("starts the public MCP HTTP server with config-aware env", async () => {
+    const stdoutLines: string[] = [];
+    const started: Array<{ port?: number; hostname?: string; env?: Record<string, string | undefined> }> = [];
+    const exitCode = await runAgentPayCli(["serve-http", "--host", "0.0.0.0", "--port", "8080"], {
+      env: {
+        SUPABASE_URL: "https://agentpay.supabase.co",
+        SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+        XLAYER_RPC_URL: "https://rpc.example",
+        EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
+      },
+      async startHttpServer(options) {
+        started.push({
+          port: options.port,
+          hostname: options.hostname,
+          env: options.env as Record<string, string | undefined>,
+        });
+        return {
+          url: "http://0.0.0.0:8080",
+          mcpUrl: "http://0.0.0.0:8080/mcp",
+          healthUrl: "http://0.0.0.0:8080/healthz",
+          async close() {},
+        };
+      },
+      stdout(message) {
+        stdoutLines.push(message);
+      },
+      stderr() {},
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(started, [
+      {
+        port: 8080,
+        hostname: "0.0.0.0",
+        env: {
+          SUPABASE_URL: "https://agentpay.supabase.co",
+          SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+          XLAYER_RPC_URL: "https://rpc.example",
+          EXECUTOR_PRIVATE_KEY: `0x${"1".repeat(64)}`,
+        },
+      },
+    ]);
+    assert.match(stdoutLines.join("\n"), /AgentPay public MCP listening at http:\/\/0\.0\.0\.0:8080\/mcp/);
   });
 });

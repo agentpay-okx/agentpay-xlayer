@@ -111,7 +111,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Search x402 Services",
       description: searchX402ServicesTool.description,
-      inputSchema: searchX402ServicesTool.inputSchema,
+      inputSchema: searchX402ServicesInputSchema.shape,
     },
     async (input) => toMcpResult(await runtime.searchX402Services(searchX402ServicesInputSchema.parse(input))),
   );
@@ -121,7 +121,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Prepare x402 Service Request",
       description: prepareX402ServiceRequestTool.description,
-      inputSchema: prepareX402ServiceRequestTool.inputSchema,
+      inputSchema: prepareX402ServiceRequestInputSchema.shape,
     },
     async (input) =>
       toMcpResult(await runtime.prepareX402ServiceRequest(prepareX402ServiceRequestInputSchema.parse(input))),
@@ -132,7 +132,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Parse x402 Payment Required",
       description: parseX402PaymentRequiredTool.description,
-      inputSchema: parseX402PaymentRequiredTool.inputSchema,
+      inputSchema: parseX402PaymentRequiredInputSchema.shape,
     },
     async (input) =>
       toMcpResult(await runtime.parseX402PaymentRequired(parseX402PaymentRequiredInputSchema.parse(input))),
@@ -143,7 +143,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Retry x402 Request",
       description: retryX402RequestTool.description,
-      inputSchema: retryX402RequestTool.inputSchema,
+      inputSchema: retryX402RequestInputSchema.shape,
     },
     async (input) => toMcpResult(await runtime.retryX402Request(retryX402RequestInputSchema.parse(input))),
   );
@@ -153,7 +153,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Prepare Contract Call",
       description: prepareContractCallTool.description,
-      inputSchema: prepareContractCallTool.inputSchema,
+      inputSchema: prepareContractCallInputSchema.shape,
     },
     async (input) => toMcpResult(await runtime.prepareContractCall(prepareContractCallInputSchema.parse(input))),
   );
@@ -195,7 +195,7 @@ export function registerAgentPayMcpTools(server: AgentPayMcpServer, runtime: Age
     {
       title: "Prepare Account Admin Transaction",
       description: prepareAccountAdminTransactionTool.description,
-      inputSchema: prepareAccountAdminTransactionTool.inputSchema,
+      inputSchema: prepareAccountAdminTransactionInputSchema,
     },
     async (input) =>
       toMcpResult(

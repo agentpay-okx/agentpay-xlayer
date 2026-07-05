@@ -20,6 +20,8 @@ describe("README", () => {
     assert.match(contents, /Owner.*Executor/s);
     assert.match(contents, /apps\/mcp-server/);
     assert.match(contents, /packages\/cli/);
+    assert.match(contents, /agentpay serve-http/);
+    assert.match(contents, /public HTTPS A2MCP|public MCP endpoint/i);
     assert.doesNotMatch(contents, /docs\//);
     assert.doesNotMatch(contents, /AGENTPAY_CONCEPT/);
     assert.doesNotMatch(contents, /product blueprint/i);
@@ -37,6 +39,7 @@ describe("README", () => {
     assert.match(contents, /mainnet or testnet/i);
     assert.match(contents, /network: "mainnet" \| "testnet"/);
     assert.match(contents, /pay 5 USDT/i);
+    assert.match(contents, /agentpay serve-http/);
     assert.doesNotMatch(quickStart, /agentpay doctor/i);
     assert.doesNotMatch(quickStart, /agentpay setup-web/i);
   });

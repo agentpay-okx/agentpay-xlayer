@@ -9,6 +9,7 @@
     "README.md",
     "src/index.ts",
     "src/mcp/agentpay-mcp.ts",
+    "src/mcp/http.ts",
     "src/mcp/stdio.ts",
     "src/runtime/agentpay-runtime.ts",
     "src/services/chain-executor.ts",

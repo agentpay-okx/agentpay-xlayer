@@ -146,4 +146,11 @@ describe("publishable AgentPay package manifests", () => {
     assert.match(wrapper, /require\.resolve\("tsx"\)/);
     assert.doesNotMatch(wrapper, /\["--import", "tsx"/);
   });
+
+  it("publishes the public HTTP MCP transport for A2MCP deployments", async () => {
+    const manifest = await readPackageJson("apps/mcp-server");
+
+    assert.ok(manifest.files.includes("src/mcp/http.ts"));
+    await access("apps/mcp-server/src/mcp/http.ts");
+  });
 });

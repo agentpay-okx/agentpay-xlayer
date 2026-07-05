@@ -9,6 +9,14 @@ npx @agentpay-ai/agentpay install
 npx @agentpay-ai/agentpay mcp
 ```
 
+For public A2MCP deployment, run the Streamable HTTP transport behind an HTTPS domain:
+
+```bash
+npx @agentpay-ai/agentpay serve-http --host 0.0.0.0 --port 3001
+```
+
+Register the public `/mcp` URL with OKX.AI, and use `/healthz` for health checks. The process itself listens over HTTP; terminate TLS at the hosting platform, load balancer, or reverse proxy.
+
 ## Tools
 
 The server exposes tools for wallet setup, balance checks, LI.FI route quotes, payment preparation, exact approval execution, payment tracking, invoice parsing, x402 Bazaar discovery for no-URL paid API requests, x402 parsing plus receipt-proof retry, route target allowance, and account admin transactions. Use `search_x402_services` and `prepare_x402_service_request` before parsing when the user describes a paid service without a URL. The x402 retry path sends AgentPay proof as `X-PAYMENT` / `PAYMENT-SIGNATURE`, reads V2 `PAYMENT-RESPONSE`, falls back to `X-PAYMENT-RESPONSE`, and includes `payment-identifier` idempotency data when advertised.
@@ -19,6 +27,12 @@ The server exposes tools for wallet setup, balance checks, LI.FI route quotes, p
 import { startAgentPayMcpServer } from "@agentpay-ai/mcp-server";
 
 await startAgentPayMcpServer();
+```
+
+```ts
+import { startAgentPayHttpServer } from "@agentpay-ai/mcp-server";
+
+await startAgentPayHttpServer({ hostname: "0.0.0.0", port: 3001 });
 ```
 
 ## Configuration

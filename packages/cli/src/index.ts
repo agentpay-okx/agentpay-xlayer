@@ -6,7 +6,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { startAgentPayMcpServer, type StartAgentPayMcpServerOptions } from "@agentpay-ai/mcp-server";
+import {
+  startAgentPayHttpServer,
+  startAgentPayMcpServer,
+  type AgentPayHttpServer,
+  type StartAgentPayHttpServerOptions,
+  type StartAgentPayMcpServerOptions,
+} from "@agentpay-ai/mcp-server";
 import {
   createSetupWebDependencies,
   parseSetupWebEnv,
@@ -54,6 +60,7 @@ export type AgentPayRuntimeName = (typeof runtimeNames)[number];
 export type AgentPayCliCommand =
   | { command: "install"; runtime: AgentPayRuntimeName; outputDir: string; force: boolean }
   | { command: "mcp" }
+  | { command: "serve-http"; hostname: string; port: number }
   | { command: "setup-web" }
   | { command: "doctor" }
   | { command: "help" };
@@ -76,6 +83,7 @@ export interface RunAgentPayCliDependencies {
   stdout?: (message: string) => void;
   stderr?: (message: string) => void;
   startMcpServer?: (options: StartAgentPayMcpServerOptions) => Promise<void>;
+  startHttpServer?: (options: StartAgentPayHttpServerOptions) => Promise<AgentPayHttpServer>;
   startSetupWebServer?: (
     dependencies: SetupWebDependencies,
     options?: { port?: number; hostname?: string },
@@ -105,6 +113,14 @@ export function parseCliArgs(args: string[]): AgentPayCliCommand {
 
   if (command === "mcp") {
     return { command: "mcp" };
+  }
+
+  if (command === "serve-http") {
+    return {
+      command: "serve-http",
+      hostname: readOption(rest, "--host") ?? "0.0.0.0",
+      port: parsePort(readOption(rest, "--port") ?? "3001"),
+    };
   }
 
   if (command === "doctor") {
@@ -149,6 +165,18 @@ export async function runAgentPayCli(
     if (command.command === "mcp") {
       const env = await loadAgentPayConfigEnv(dependencies.env ?? process.env);
       await (dependencies.startMcpServer ?? startAgentPayMcpServer)({ env });
+      return 0;
+    }
+
+    if (command.command === "serve-http") {
+      const env = await loadAgentPayConfigEnv(dependencies.env ?? process.env);
+      const server = await (dependencies.startHttpServer ?? startAgentPayHttpServer)({
+        env,
+        hostname: command.hostname,
+        port: command.port,
+      });
+      stdout(`AgentPay public MCP listening at ${server.mcpUrl}`);
+      stdout(`AgentPay health check at ${server.healthUrl}`);
       return 0;
     }
 
@@ -303,6 +331,14 @@ function parseRuntime(value: string): AgentPayRuntimeName {
   }
 
   throw new Error(`Unsupported AgentPay runtime: ${value}`);
+}
+
+function parsePort(value: string): number {
+  if (!isPort(value)) {
+    throw new Error(`Unsupported AgentPay HTTP port: ${value}`);
+  }
+
+  return Number(value);
 }
 
 function validateMcpConfig(env: Record<string, string | undefined>): AgentPayDoctorSection {
@@ -544,6 +580,7 @@ function createHelpText(): string {
     "  agentpay doctor",
     "  agentpay setup-web",
     "  agentpay mcp",
+    "  agentpay serve-http [--host 0.0.0.0] [--port 3001]",
   ].join("\n");
 }
 

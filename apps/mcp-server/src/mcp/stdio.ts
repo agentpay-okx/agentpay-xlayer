@@ -11,6 +11,7 @@ import { type AgentPayMcpServer, registerAgentPayMcpTools } from "./agentpay-mcp
 
 export interface ConnectableAgentPayMcpServer extends AgentPayMcpServer {
   connect(transport: unknown): Promise<void>;
+  close(): Promise<void>;
 }
 
 export interface AgentPayMcpConnection {

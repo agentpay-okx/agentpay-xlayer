@@ -54,7 +54,17 @@ AgentPay separates ownership from execution.
 - Offchain guards: Supabase stores setup intents, payment intents, approval phrases, status transitions, and `payment_events` audit history.
 - x402 support can search Bazaar with `search_x402_services` when the user does not provide a URL, prepare the selected service with `prepare_x402_service_request`, parse v2 `PAYMENT-REQUIRED`, execute an approved AgentPay payment, and retry the protected resource with `X-PAYMENT` / `PAYMENT-SIGNATURE` headers containing an AgentPay receipt proof. The retry reads the V2 `PAYMENT-RESPONSE` header, keeps legacy `X-PAYMENT-RESPONSE` fallback, and appends `payment-identifier` idempotency data when the server advertises it. Strict standard x402 exact endpoints must support that AgentPay receipt proof bridge or use their native signer/facilitator path.
 
-`doctor` and `setup-web` are helper commands, not the main user flow. Use `npx @agentpay-ai/agentpay doctor` for diagnostics and `npx @agentpay-ai/agentpay setup-web` only as a fallback when the setup page needs to be served manually.
+`doctor`, `setup-web`, and `serve-http` are helper/operator commands, not the main user chat flow. Use `npx @agentpay-ai/agentpay doctor` for diagnostics, `npx @agentpay-ai/agentpay setup-web` only as a fallback when the setup page needs to be served manually, and `npx @agentpay-ai/agentpay serve-http` when deploying a public MCP endpoint behind HTTPS for A2MCP listing.
+
+## Public A2MCP Endpoint
+
+For OKX.AI A2MCP registration, deploy AgentPay behind a public HTTPS domain and run the Streamable HTTP MCP transport:
+
+```bash
+npx @agentpay-ai/agentpay serve-http --host 0.0.0.0 --port 3001
+```
+
+Expose `/mcp` through your HTTPS reverse proxy or platform route, and use `/healthz` for uptime checks. The Node server listens over HTTP internally; TLS should terminate at the deployment platform, load balancer, or reverse proxy.
 
 ## Repository Layout
 
