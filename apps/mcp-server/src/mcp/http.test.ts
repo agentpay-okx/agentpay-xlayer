@@ -101,7 +101,54 @@ describe("startAgentPayHttpServer", () => {
     }
   });
 
-  it("returns an OKX Agent Payments Protocol challenge before serving MCP", async () => {
+  it("keeps MCP discovery and wallet setup free when MCP payments are enabled", async () => {
+    const paymentProcessor = createPaymentProcessor({
+      async processHTTPRequest() {
+        throw new Error("MCP discovery and wallet setup should not touch the payment processor.");
+      },
+    });
+    const server = await startAgentPayHttpServer({
+      env: mcpEnv(),
+      hostname: "127.0.0.1",
+      port: 0,
+      paymentProcessor,
+      createRuntime() {
+        return createRuntime({
+          async prepareWalletCreation() {
+            return {
+              status: "PENDING",
+              setupIntentId: "setup_http",
+              setupUrl: "https://setup.example.com/setup?setup_intent_id=setup_http",
+              messageToSign: "AgentPay setup intent setup_http",
+              expiresAt: "2026-07-08T00:15:00.000Z",
+              homeChainId: 1952,
+              homeChain: "X Layer testnet",
+            };
+          },
+        });
+      },
+    });
+
+    try {
+      const client = new Client({ name: "agentpay-http-free-test", version: "1.0.0" });
+      const transport = new StreamableHTTPClientTransport(new URL(server.mcpUrl));
+
+      await client.connect(transport);
+      const tools = await client.listTools();
+      const setup = await client.callTool({
+        name: "prepare_wallet_creation",
+        arguments: { network: "testnet" },
+      });
+      await client.close();
+
+      assert.ok(tools.tools.some((tool) => tool.name === "prepare_wallet_creation"));
+      assert.match(JSON.stringify(setup), /setup_http/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns an OKX Agent Payments Protocol challenge before serving protected MCP methods", async () => {
     let mcpServerWasCreated = false;
     const paymentProcessor = createPaymentProcessor({
       async processHTTPRequest(context) {
@@ -163,7 +210,7 @@ describe("startAgentPayHttpServer", () => {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "resources/read", params: { uri: "paid://probe" } }),
       });
 
       assert.equal(response.status, 402);
@@ -210,7 +257,20 @@ describe("startAgentPayHttpServer", () => {
       port: 0,
       paymentProcessor,
       createRuntime() {
-        return createRuntime();
+        return createRuntime({
+          async retryX402Request() {
+            return {
+              status: "RESOURCE_FETCHED",
+              paymentIntentId: "pay_x402",
+              requestUrl: "https://api.example.com/protected",
+              method: "GET",
+              httpStatus: 200,
+              paymentHeader: "proof",
+              bodyText: "paid payload",
+              instructionToAgent: "x402 retry succeeded. Return the protected resource response to the user.",
+            };
+          },
+        });
       },
     });
 
@@ -222,13 +282,31 @@ describe("startAgentPayHttpServer", () => {
           "content-type": "application/json",
           "PAYMENT-SIGNATURE": "paid",
         },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "retry_x402_request",
+            arguments: {
+              paymentIntentId: "pay_x402",
+              paymentRequired: {
+                x402Version: 2,
+                resource: {
+                  url: "https://api.example.com/protected",
+                  method: "GET",
+                },
+                accepts: [],
+              },
+            },
+          },
+        }),
       });
       const responseText = await response.text();
 
       assert.equal(response.status, 200);
       assert.equal((response.headers.get("PAYMENT-RESPONSE") ?? "").length > 0, true);
-      assert.match(responseText, /prepare_wallet_creation/);
+      assert.match(responseText, /paid payload/);
       assert.equal(calls[0], "process:paid");
       assert.match(calls[1] ?? "", /^settle:\d+$/);
     } finally {
@@ -246,7 +324,7 @@ function mcpEnv(): Record<string, string> {
   };
 }
 
-function createRuntime(): AgentPayRuntime {
+function createRuntime(overrides: Partial<AgentPayRuntime> = {}): AgentPayRuntime {
   return {
     async prepareWalletCreation() {
       throw new Error("prepareWalletCreation was not expected.");
@@ -305,6 +383,7 @@ function createRuntime(): AgentPayRuntime {
     async listPaymentEvents() {
       throw new Error("listPaymentEvents was not expected.");
     },
+    ...overrides,
   };
 }
 

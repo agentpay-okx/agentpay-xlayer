@@ -1,6 +1,7 @@
 import { EventEmitter, once } from "node:events";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { PassThrough } from "node:stream";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type {
@@ -28,6 +29,27 @@ const defaultHostname = "0.0.0.0";
 const defaultPort = 3001;
 const defaultMcpPath = "/mcp";
 const defaultHealthPath = "/healthz";
+const freeJsonRpcMethods = new Set(["initialize", "notifications/initialized", "ping", "tools/list"]);
+const freeToolNames = new Set([
+  "prepare_wallet_creation",
+  "check_wallet_creation",
+  "get_agent_wallet",
+  "get_balance",
+  "parse_invoice_payment",
+  "search_x402_services",
+  "prepare_x402_service_request",
+  "parse_x402_payment_required",
+  "prepare_contract_call",
+  "quote_payment_route",
+  "check_route_target_allowance",
+  "prepare_route_target_allowance",
+  "prepare_account_admin_transaction",
+  "prepare_payment",
+  "execute_payment",
+  "track_payment",
+  "list_transactions",
+  "list_payment_events",
+]);
 
 export interface AgentPayHttpServer {
   url: string;
@@ -136,8 +158,11 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
     return;
   }
 
+  const requestBody = await readRequestBody(options.request);
+  const shouldProcessPayment =
+    Boolean(options.paymentProcessor) && !isFreeMcpRequest(requestBody);
   const paymentContext = createPaymentRequestContext(options.request, pathname);
-  const paymentResult = options.paymentProcessor
+  const paymentResult = shouldProcessPayment && options.paymentProcessor
     ? await options.paymentProcessor.processHTTPRequest(paymentContext)
     : { type: "no-payment-required" as const };
 
@@ -151,6 +176,7 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
 
     await serveMcpRequest({
       request: options.request,
+      requestBody,
       response: bufferedResponse as unknown as ServerResponse,
       runtime: options.runtime,
       createServer: options.createServer,
@@ -187,6 +213,7 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
 
   await serveMcpRequest({
     request: options.request,
+    requestBody,
     response: options.response,
     runtime: options.runtime,
     createServer: options.createServer,
@@ -196,6 +223,7 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
 
 interface ServeMcpRequestOptions {
   request: IncomingMessage;
+  requestBody: Buffer;
   response: ServerResponse;
   runtime: AgentPayRuntime;
   createServer: (runtime: AgentPayRuntime) => ConnectableAgentPayMcpServer;
@@ -208,7 +236,11 @@ async function serveMcpRequest(options: ServeMcpRequestOptions): Promise<void> {
 
   try {
     await mcpServer.connect(transport);
-    await transport.handleRequest(options.request, options.response);
+    await transport.handleRequest(
+      createReplayableRequest(options.request, options.requestBody),
+      options.response,
+      parseJsonBody(options.requestBody),
+    );
   } catch {
     if (!options.response.headersSent) {
       writeJson(options.response, 500, {
@@ -223,6 +255,100 @@ async function serveMcpRequest(options: ServeMcpRequestOptions): Promise<void> {
   } finally {
     await Promise.allSettled([transport.close(), mcpServer.close()]);
   }
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(toBuffer(chunk));
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function createReplayableRequest(request: IncomingMessage, body: Buffer): IncomingMessage {
+  const replay = new PassThrough();
+  Object.assign(replay, {
+    complete: true,
+    headers: request.headers,
+    httpVersion: request.httpVersion,
+    httpVersionMajor: request.httpVersionMajor,
+    httpVersionMinor: request.httpVersionMinor,
+    method: request.method,
+    rawHeaders: request.rawHeaders,
+    rawTrailers: request.rawTrailers,
+    url: request.url,
+    socket: request.socket,
+    trailers: request.trailers,
+  });
+  replay.end(body);
+
+  return replay as unknown as IncomingMessage;
+}
+
+function isFreeMcpRequest(body: Buffer): boolean {
+  const messages = parseJsonRpcMessages(body);
+
+  return messages.length > 0 && messages.every(isFreeJsonRpcMessage);
+}
+
+function parseJsonRpcMessages(body: Buffer): JsonRpcMessage[] {
+  const parsed = parseJsonBody(body);
+
+  if (parsed === undefined) {
+    return [];
+  }
+
+  const messages = Array.isArray(parsed) ? parsed : [parsed];
+
+  return messages.filter(isJsonRpcMessage);
+}
+
+function parseJsonBody(body: Buffer): unknown {
+  if (body.length === 0) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(body.toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+interface JsonRpcMessage {
+  method?: unknown;
+  params?: unknown;
+}
+
+function isJsonRpcMessage(value: unknown): value is JsonRpcMessage {
+  return typeof value === "object" && value !== null;
+}
+
+function isFreeJsonRpcMessage(message: JsonRpcMessage): boolean {
+  if (typeof message.method !== "string") {
+    return true;
+  }
+
+  if (freeJsonRpcMethods.has(message.method)) {
+    return true;
+  }
+
+  if (message.method !== "tools/call") {
+    return false;
+  }
+
+  return freeToolNames.has(getToolCallName(message.params));
+}
+
+function getToolCallName(params: unknown): string {
+  if (typeof params !== "object" || params === null || !("name" in params)) {
+    return "";
+  }
+
+  const name = (params as { name?: unknown }).name;
+  return typeof name === "string" ? name : "";
 }
 
 function createStatelessTransport(): StreamableHTTPServerTransport {
