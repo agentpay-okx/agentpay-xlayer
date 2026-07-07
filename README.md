@@ -119,6 +119,8 @@ The generated config and server environment use these core values:
 
 Optional values include `SETUP_WEB_URL`, `LIFI_API_KEY`, `AGENTPAY_OWNER_ADDRESS`, `AGENTPAY_EXECUTOR_ADDRESS`, `AGENTPAY_HOME_CHAIN_ID`, X Layer token overrides, `AGENTPAY_INITIAL_ROUTE_TARGETS`, and `SETUP_WEB_PORT`.
 
+X Layer testnet defaults to the OKX faucet stablecoins: USDT0 `0x9e29b3AaDa05Bf2D2c827Af80Bd28Dc0b9b4FB0c` and USDC `0xcB8BF24c6cE16Ad21D707c9505421a17f2bec79D`. Use `AGENTPAY_XLAYER_TESTNET_USDT0_ADDRESS` and `AGENTPAY_XLAYER_TESTNET_USDC_ADDRESS` only when you intentionally want custom test tokens.
+
 Use `X402_BAZAAR_FACILITATOR_URL` to override the default x402 Bazaar facilitator.
 
 Use `AGENTPAY_A2MCP_PAYMENT_*` and `OKX_APP_*` only for the public A2MCP seller endpoint. Keep these values server-side; they are not needed for local stdio MCP installs.
@@ -127,7 +129,7 @@ Keep private keys and Supabase service-role keys server-side. Never paste secret
 
 ## Smart Account Deployment
 
-The setup web flow deploys `AgentPayAccount` with X Layer USDT0 and USDC pre-allowed. Route targets are separate owner-controlled allowlist entries.
+The setup web flow deploys `AgentPayAccount` with X Layer USDT0 and USDC pre-allowed. On X Layer testnet, the default allowlist uses the OKX faucet stablecoins. Route targets are separate owner-controlled allowlist entries.
 
 For standalone Foundry deployment, set `XLAYER_RPC_URL`, `SETUP_DEPLOYER_PRIVATE_KEY`, `AGENTPAY_OWNER_ADDRESS`, and `AGENTPAY_EXECUTOR_ADDRESS`, then run:
 

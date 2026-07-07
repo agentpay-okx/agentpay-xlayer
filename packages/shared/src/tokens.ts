@@ -43,7 +43,23 @@ export const STABLE_TOKENS_BY_CHAIN: Record<number, Partial<Record<StableTokenSy
       decimals: 6,
     },
   },
-  1952: {},
+  1952: {
+    USDT0: {
+      symbol: "USDT0",
+      address: "0x9e29b3AaDa05Bf2D2c827Af80Bd28Dc0b9b4FB0c",
+      decimals: 6,
+    },
+    USDC: {
+      symbol: "USDC",
+      address: "0xcB8BF24c6cE16Ad21D707c9505421a17f2bec79D",
+      decimals: 6,
+    },
+    USDT: {
+      symbol: "USDT",
+      address: "0x9e29b3AaDa05Bf2D2c827Af80Bd28Dc0b9b4FB0c",
+      decimals: 6,
+    },
+  },
   8453: {
     USDC: {
       symbol: "USDC",

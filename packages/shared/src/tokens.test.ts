@@ -29,6 +29,20 @@ describe("stable token metadata", () => {
     assert.equal(getStableTokenAddress(8453, "USDC"), "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
   });
 
+  it("returns X Layer testnet faucet stablecoin metadata", () => {
+    assert.deepEqual(getStableTokenMetadata(1952, "USDT0"), {
+      symbol: "USDT0",
+      address: "0x9e29b3AaDa05Bf2D2c827Af80Bd28Dc0b9b4FB0c",
+      decimals: 6,
+    });
+    assert.deepEqual(getStableTokenMetadata(1952, "USDC"), {
+      symbol: "USDC",
+      address: "0xcB8BF24c6cE16Ad21D707c9505421a17f2bec79D",
+      decimals: 6,
+    });
+    assert.equal(getStableTokenAddress(1952, "USDT"), "0x9e29b3AaDa05Bf2D2c827Af80Bd28Dc0b9b4FB0c");
+  });
+
   it("can override X Layer testnet token addresses for hackathon demos", () => {
     configureStableTokenMetadataOverrides({
       1952: {
