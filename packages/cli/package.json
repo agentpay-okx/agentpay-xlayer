@@ -1,6 +1,6 @@
 {
   "name": "@agentpay-ai/agentpay",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "type": "module",
   "bin": {
     "agentpay": "dist/index.js"
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@agentpay-ai/mcp-server": "0.1.6",
-    "@agentpay-ai/setup-web": "0.1.6",
+    "@agentpay-ai/setup-web": "0.1.7",
     "@agentpay-ai/skill": "0.1.6",
     "tsx": "^4.22.5"
   }
