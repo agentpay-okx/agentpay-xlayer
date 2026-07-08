@@ -14,6 +14,7 @@ import { ExactEvmScheme } from "@okxweb3/x402-evm/exact/server";
 const enabledValues = new Set(["1", "true", "yes", "on"]);
 const DEFAULT_A2MCP_PAYMENT_NETWORK = "eip155:196" satisfies Network;
 const DEFAULT_A2MCP_PAYMENT_TIMEOUT_SECONDS = 300;
+const DEFAULT_A2MCP_PAYMENT_ASSET_DECIMALS = 6;
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
 const caip2EvmNetworkPattern = /^eip155:\d+$/;
 
@@ -40,6 +41,7 @@ export interface AgentPayMcpPaymentConfig {
   okxBaseUrl?: string;
   syncSettle?: boolean;
   assetTransferMethod?: "eip3009" | "permit2";
+  assetDecimals: number;
 }
 
 export interface CreateOkxAgentPaymentProcessorOptions {
@@ -58,6 +60,10 @@ export function parseAgentPayMcpPaymentEnv(
   const maxTimeoutSeconds = parseOptionalPositiveInteger(
     normalized.AGENTPAY_A2MCP_PAYMENT_MAX_TIMEOUT_SECONDS,
     DEFAULT_A2MCP_PAYMENT_TIMEOUT_SECONDS,
+  );
+  const assetDecimals = parseOptionalPositiveInteger(
+    normalized.AGENTPAY_A2MCP_PAYMENT_ASSET_DECIMALS,
+    DEFAULT_A2MCP_PAYMENT_ASSET_DECIMALS,
   );
   const network = normalized.AGENTPAY_A2MCP_PAYMENT_NETWORK ?? DEFAULT_A2MCP_PAYMENT_NETWORK;
   const missing = [
@@ -83,6 +89,9 @@ export function parseAgentPayMcpPaymentEnv(
     normalized.AGENTPAY_A2MCP_PAYMENT_MAX_TIMEOUT_SECONDS && !maxTimeoutSeconds
       ? "AGENTPAY_A2MCP_PAYMENT_MAX_TIMEOUT_SECONDS"
       : undefined,
+    normalized.AGENTPAY_A2MCP_PAYMENT_ASSET_DECIMALS && !assetDecimals
+      ? "AGENTPAY_A2MCP_PAYMENT_ASSET_DECIMALS"
+      : undefined,
     normalized.AGENTPAY_A2MCP_PAYMENT_FACILITATOR_URL &&
     !isHttpUrl(normalized.AGENTPAY_A2MCP_PAYMENT_FACILITATOR_URL)
       ? "AGENTPAY_A2MCP_PAYMENT_FACILITATOR_URL"
@@ -104,6 +113,7 @@ export function parseAgentPayMcpPaymentEnv(
     price: normalized.AGENTPAY_A2MCP_PAYMENT_PRICE,
     network: network as Network,
     maxTimeoutSeconds,
+    assetDecimals,
     facilitatorUrl: normalized.AGENTPAY_A2MCP_PAYMENT_FACILITATOR_URL,
     okxApiKey: normalized.OKX_APP_API_KEY,
     okxSecretKey: normalized.OKX_APP_SECRET_KEY,
@@ -190,6 +200,7 @@ function createPaymentOption(config: AgentPayMcpPaymentConfig): PaymentOption {
     maxTimeoutSeconds: config.maxTimeoutSeconds,
     extra: omitUndefined({
       assetTransferMethod: config.assetTransferMethod,
+      decimals: config.assetDecimals,
     }),
   };
 }
