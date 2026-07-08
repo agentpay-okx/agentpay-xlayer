@@ -222,6 +222,60 @@ describe("startAgentPayHttpServer", () => {
     }
   });
 
+  it("returns a payment challenge for generic endpoint probes when MCP payments are enabled", async () => {
+    let mcpServerWasCreated = false;
+    const paymentProcessor = createPaymentProcessor({
+      async processHTTPRequest(context) {
+        assert.equal(context.path, "/mcp");
+
+        return {
+          type: "payment-error",
+          response: {
+            status: 402,
+            headers: {
+              "content-type": "application/json",
+              "PAYMENT-REQUIRED": "probe-challenge",
+            },
+            body: {
+              error: "Payment required.",
+            },
+          },
+        };
+      },
+    });
+    const server = await startAgentPayHttpServer({
+      env: mcpEnv(),
+      hostname: "127.0.0.1",
+      port: 0,
+      paymentProcessor,
+      createRuntime() {
+        return createRuntime();
+      },
+      createServer(runtime) {
+        mcpServerWasCreated = true;
+        return createFakeMcpServer(runtime);
+      },
+    });
+
+    try {
+      const getResponse = await fetch(server.mcpUrl);
+      const malformedPostResponse = await fetch(server.mcpUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      assert.equal(getResponse.status, 402);
+      assert.equal(getResponse.headers.get("PAYMENT-REQUIRED"), "probe-challenge");
+      assert.deepEqual(await getResponse.json(), { error: "Payment required." });
+      assert.equal(malformedPostResponse.status, 402);
+      assert.equal(malformedPostResponse.headers.get("PAYMENT-REQUIRED"), "probe-challenge");
+      assert.equal(mcpServerWasCreated, false);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("forwards paid MCP requests and settles after the MCP response", async () => {
     const calls: string[] = [];
     const paymentProcessor = createPaymentProcessor({

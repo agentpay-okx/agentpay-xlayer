@@ -147,6 +147,17 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
   }
 
   if (options.request.method !== "POST") {
+    if (options.paymentProcessor && isGenericPaymentProbe(options.request)) {
+      const paymentResult = await options.paymentProcessor.processHTTPRequest(
+        createPaymentRequestContext(options.request, pathname),
+      );
+
+      if (paymentResult.type === "payment-error") {
+        writeHttpInstruction(options.response, paymentResult.response);
+        return;
+      }
+    }
+
     writeJson(options.response, 405, {
       jsonrpc: "2.0",
       error: {
@@ -257,6 +268,15 @@ async function serveMcpRequest(options: ServeMcpRequestOptions): Promise<void> {
   }
 }
 
+function isGenericPaymentProbe(request: IncomingMessage): boolean {
+  if (request.method !== "GET") {
+    return false;
+  }
+
+  const accept = String(request.headers.accept ?? "");
+  return !accept.toLowerCase().includes("text/event-stream");
+}
+
 async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
 
@@ -328,7 +348,7 @@ function isJsonRpcMessage(value: unknown): value is JsonRpcMessage {
 
 function isFreeJsonRpcMessage(message: JsonRpcMessage): boolean {
   if (typeof message.method !== "string") {
-    return true;
+    return false;
   }
 
   if (freeJsonRpcMethods.has(message.method)) {
