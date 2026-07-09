@@ -30,26 +30,6 @@ const defaultPort = 3001;
 const defaultMcpPath = "/mcp";
 const defaultHealthPath = "/healthz";
 const freeJsonRpcMethods = new Set(["initialize", "notifications/initialized", "ping", "tools/list"]);
-const freeToolNames = new Set([
-  "prepare_wallet_creation",
-  "check_wallet_creation",
-  "get_agent_wallet",
-  "get_balance",
-  "parse_invoice_payment",
-  "search_x402_services",
-  "prepare_x402_service_request",
-  "parse_x402_payment_required",
-  "prepare_contract_call",
-  "quote_payment_route",
-  "check_route_target_allowance",
-  "prepare_route_target_allowance",
-  "prepare_account_admin_transaction",
-  "prepare_payment",
-  "execute_payment",
-  "track_payment",
-  "list_transactions",
-  "list_payment_events",
-]);
 
 export interface AgentPayHttpServer {
   url: string;
@@ -351,24 +331,7 @@ function isFreeJsonRpcMessage(message: JsonRpcMessage): boolean {
     return false;
   }
 
-  if (freeJsonRpcMethods.has(message.method)) {
-    return true;
-  }
-
-  if (message.method !== "tools/call") {
-    return false;
-  }
-
-  return freeToolNames.has(getToolCallName(message.params));
-}
-
-function getToolCallName(params: unknown): string {
-  if (typeof params !== "object" || params === null || !("name" in params)) {
-    return "";
-  }
-
-  const name = (params as { name?: unknown }).name;
-  return typeof name === "string" ? name : "";
+  return freeJsonRpcMethods.has(message.method);
 }
 
 function createStatelessTransport(): StreamableHTTPServerTransport {

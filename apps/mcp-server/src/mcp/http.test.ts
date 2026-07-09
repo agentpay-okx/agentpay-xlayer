@@ -101,10 +101,28 @@ describe("startAgentPayHttpServer", () => {
     }
   });
 
-  it("keeps MCP discovery and wallet setup free when MCP payments are enabled", async () => {
+  it("keeps MCP discovery free but charges MCP tool calls when payments are enabled", async () => {
+    let paymentCalls = 0;
+    let walletSetupWasCalled = false;
     const paymentProcessor = createPaymentProcessor({
-      async processHTTPRequest() {
-        throw new Error("MCP discovery and wallet setup should not touch the payment processor.");
+      async processHTTPRequest(context) {
+        paymentCalls += 1;
+        assert.equal(context.method, "POST");
+        assert.equal(context.path, "/mcp");
+
+        return {
+          type: "payment-error",
+          response: {
+            status: 402,
+            headers: {
+              "content-type": "application/json",
+              "PAYMENT-REQUIRED": "tool-call-challenge",
+            },
+            body: {
+              error: "Payment required.",
+            },
+          },
+        };
       },
     });
     const server = await startAgentPayHttpServer({
@@ -115,6 +133,7 @@ describe("startAgentPayHttpServer", () => {
       createRuntime() {
         return createRuntime({
           async prepareWalletCreation() {
+            walletSetupWasCalled = true;
             return {
               status: "PENDING",
               setupIntentId: "setup_http",
@@ -135,14 +154,28 @@ describe("startAgentPayHttpServer", () => {
 
       await client.connect(transport);
       const tools = await client.listTools();
-      const setup = await client.callTool({
-        name: "prepare_wallet_creation",
-        arguments: { network: "testnet" },
-      });
       await client.close();
 
+      const toolCallResponse = await fetch(server.mcpUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "prepare_wallet_creation",
+            arguments: { network: "testnet" },
+          },
+        }),
+      });
+
       assert.ok(tools.tools.some((tool) => tool.name === "prepare_wallet_creation"));
-      assert.match(JSON.stringify(setup), /setup_http/);
+      assert.equal(toolCallResponse.status, 402);
+      assert.equal(toolCallResponse.headers.get("PAYMENT-REQUIRED"), "tool-call-challenge");
+      assert.deepEqual(await toolCallResponse.json(), { error: "Payment required." });
+      assert.equal(paymentCalls, 1);
+      assert.equal(walletSetupWasCalled, false);
     } finally {
       await server.close();
     }
