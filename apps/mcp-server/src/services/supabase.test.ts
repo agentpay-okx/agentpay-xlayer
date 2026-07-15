@@ -240,6 +240,23 @@ class FakePaidExecutionLifecycleQuery {
   maybeSingle() { this.calls.push(["maybeSingle", []]); return Promise.resolve({ data: this.maybeSingleData, error: null }); }
 }
 
+class FakePaidExecutionChallengeQuery {
+  public calls: Array<[string, unknown[]]> = [];
+  public inserted: unknown;
+  public updated: unknown;
+  public insertError: { message: string } | null = { message: "duplicate key" };
+  public maybeSingleDataQueue: unknown[] = [];
+
+  select(columns: string) { this.calls.push(["select", [columns]]); return this; }
+  insert(row: unknown) { this.inserted = row; return Promise.resolve({ error: this.insertError }); }
+  update(row: unknown) { this.updated = row; this.calls.push(["update", [row]]); return this; }
+  eq(column: string, value: string) { this.calls.push(["eq", [column, value]]); return this; }
+  maybeSingle() {
+    this.calls.push(["maybeSingle", []]);
+    return Promise.resolve({ data: this.maybeSingleDataQueue.shift() ?? null, error: null });
+  }
+}
+
 class FakeSetupIntentQuery {
   public calls: Array<[string, unknown[]]> = [];
   public inserted: unknown;
@@ -1184,6 +1201,64 @@ describe("createSupabaseAgentPayRepositories", () => {
     assert.equal(settled.status, "SETTLED");
     assert.equal((query.updated as Record<string, unknown>).status, "SETTLED");
     assert.equal((query.updated as Record<string, unknown>).settlement_tx_hash, `0x${"1".repeat(64)}`);
+  });
+
+  it("renews an expired paid challenge with the same durable binding", async () => {
+    const query = new FakePaidExecutionChallengeQuery();
+    const expiredRow = {
+      id: "11111111-1111-4111-8111-111111111111",
+      tenant_id: "22222222-2222-4222-8222-222222222222",
+      environment: "production",
+      payment_intent_id: "pay_123",
+      owner_address: "0x2222222222222222222222222222222222222222",
+      account_address: "0x3333333333333333333333333333333333333333",
+      request_hash: "a".repeat(64),
+      arguments_hash: "b".repeat(64),
+      authorization_hash: `0x${"c".repeat(64)}`,
+      fee_terms_hash: "d".repeat(64),
+      payment_requirements_hash: "e".repeat(64),
+      status: "OFFERED",
+      offered_at: "2026-07-13T00:00:00.000Z",
+      expires_at: "2026-07-13T00:05:00.000Z",
+      consumed_at: null,
+    };
+    query.maybeSingleDataQueue.push(expiredRow, {
+      ...expiredRow,
+      offered_at: "2026-07-13T00:06:00.000Z",
+      expires_at: "2026-07-13T00:11:00.000Z",
+    });
+    const client = {
+      from(table: string) {
+        assert.equal(table, "asp_payment_challenges");
+        return query;
+      },
+    };
+    const repositories = createSupabaseAgentPayRepositories(client as unknown as AgentPaySupabaseClient);
+
+    const renewed = await repositories.paidExecutionChallenge!.offer({
+      id: "33333333-3333-4333-8333-333333333333",
+      tenantId: expiredRow.tenant_id,
+      environment: "production",
+      paymentIntentId: expiredRow.payment_intent_id,
+      ownerAddress: expiredRow.owner_address,
+      accountAddress: expiredRow.account_address,
+      requestHash: expiredRow.request_hash,
+      argumentsHash: expiredRow.arguments_hash,
+      authorizationHash: expiredRow.authorization_hash,
+      feeTermsHash: expiredRow.fee_terms_hash,
+      paymentRequirementsHash: expiredRow.payment_requirements_hash,
+      offeredAt: "2026-07-13T00:06:00.000Z",
+      expiresAt: "2026-07-13T00:11:00.000Z",
+    });
+
+    assert.equal(renewed.disposition, "OFFERED");
+    assert.deepEqual(query.updated, {
+      status: "OFFERED",
+      offered_at: "2026-07-13T00:06:00.000Z",
+      expires_at: "2026-07-13T00:11:00.000Z",
+      consumed_at: null,
+    });
+    assert.ok(query.calls.some(([method, args]) => method === "eq" && args[0] === "id" && args[1] === expiredRow.id));
   });
 });
 

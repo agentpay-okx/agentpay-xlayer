@@ -1631,8 +1631,32 @@ function createPaidExecutionChallengeRepository(
       ).maybeSingle();
       if (existing.error || !existing.data) throw new Error(`Failed to offer paid challenge: ${inserted.error.message}`);
       const record = toPaidExecutionChallengeRecord(existing.data);
+      const sameBinding = samePaidChallenge(record, input);
+      const renewable =
+        sameBinding &&
+        record.status !== "CONSUMED" &&
+        (record.status === "EXPIRED" || Date.parse(record.expiresAt) <= Date.parse(input.offeredAt));
+      if (renewable) {
+        const renewed = await scopeUpdate(
+          client
+            .from("asp_payment_challenges")
+            .update({
+              status: "OFFERED",
+              offered_at: input.offeredAt,
+              expires_at: input.expiresAt,
+              consumed_at: null,
+            })
+            .eq("id", record.id)
+            .eq("status", record.status)
+            .select("*"),
+        ).maybeSingle();
+        if (renewed.error || !renewed.data) {
+          throw new Error("Failed to renew expired paid challenge.");
+        }
+        return { disposition: "OFFERED", record: toPaidExecutionChallengeRecord(renewed.data) };
+      }
       return {
-        disposition: samePaidChallenge(record, input) ? "REPLAY" : "CONFLICT",
+        disposition: sameBinding ? "REPLAY" : "CONFLICT",
         record,
       };
     },
