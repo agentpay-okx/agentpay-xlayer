@@ -73,6 +73,31 @@ export interface IssuedServiceSession {
   readonly record: ServiceSessionRecord;
 }
 
+export interface VerifiedServiceSessionBinding {
+  readonly tenantId: string;
+  readonly ownerAddress: string;
+  readonly accountAddress: string;
+  readonly homeChainId: number;
+  readonly authenticationEpoch: number;
+  readonly environment: SessionEnvironment;
+}
+
+export interface IssueServiceSessionFromBindingOptions {
+  binding: VerifiedServiceSessionBinding;
+  scopes: readonly SessionScope[];
+  sessionStore: ServiceSessionStore;
+  serverSecret: string | Uint8Array;
+  audience: string;
+  environment: SessionEnvironment;
+  clock: () => Date;
+  sessionLifetimeSeconds: number;
+  issuedAt?: Date;
+  createSessionId?: () => string;
+  randomCredentialBytes?: () => Uint8Array;
+}
+
+export type PrepareServiceSessionFromBindingOptions = Omit<IssueServiceSessionFromBindingOptions, "sessionStore">;
+
 export interface AuthenticateServiceSessionOptions {
   credential: string;
   sessionStore: ServiceSessionStore;
@@ -110,17 +135,75 @@ export async function issueServiceSession(options: IssueServiceSessionOptions): 
     throw new AgentPayAuthError("AUTH_ENVIRONMENT_MISMATCH", "Owner tenant environment does not match this endpoint.");
   }
 
-  const challengeIssuedAt = new Date(options.challenge.issuedAt).getTime();
-  const expiresAt = new Date(challengeIssuedAt + SERVICE_SESSION_TTL_SECONDS * 1000).toISOString();
-  if (now.getTime() >= new Date(expiresAt).getTime()) {
-    throw new AgentPayAuthError("SIWE_EXPIRED", "SIWE challenge no longer permits a new service session.");
-  }
   const consumed = await options.challengeStore.consume(options.challenge.challengeId, now.toISOString());
   if (!consumed) {
     throw new AgentPayAuthError("SIWE_REPLAYED", "SIWE challenge has already been consumed or is unavailable.");
   }
 
-  const issuedAt = now.toISOString();
+  return issueServiceSessionFromVerifiedBinding({
+    binding: {
+      tenantId: binding.tenantId,
+      ownerAddress: recoveredOwner,
+      accountAddress: options.challenge.accountAddress,
+      homeChainId: options.challenge.chainId,
+      authenticationEpoch: binding.authenticationEpoch,
+      environment: options.environment,
+    },
+    scopes: options.challenge.scopes,
+    sessionStore: options.sessionStore,
+    serverSecret: options.serverSecret,
+    audience: options.audience,
+    environment: options.environment,
+    clock: options.clock,
+    sessionLifetimeSeconds: options.challenge.sessionLifetimeSeconds,
+    issuedAt: new Date(options.challenge.issuedAt),
+    createSessionId: options.createSessionId,
+    randomCredentialBytes: options.randomCredentialBytes,
+  });
+}
+
+export async function issueServiceSessionFromVerifiedBinding(
+  options: IssueServiceSessionFromBindingOptions,
+): Promise<IssuedServiceSession> {
+  const issued = prepareServiceSessionFromVerifiedBinding(options);
+  await options.sessionStore.create(issued.record);
+  return issued;
+}
+
+/**
+ * Creates an opaque session record without persisting it. OAuth code exchange
+ * uses this to let the durable authorization repository atomically consume a
+ * code and insert the session in one database transaction.
+ */
+export function prepareServiceSessionFromVerifiedBinding(
+  options: PrepareServiceSessionFromBindingOptions,
+): IssuedServiceSession {
+  const now = options.clock();
+  const expectedEnvironment = options.binding.homeChainId === 196 ? "production" : "staging";
+  if (
+    options.binding.environment !== options.environment ||
+    options.environment !== expectedEnvironment
+  ) {
+    throw new AgentPayAuthError("AUTH_ENVIRONMENT_MISMATCH", "Verified owner binding does not match the session environment.");
+  }
+  if (!Number.isSafeInteger(options.sessionLifetimeSeconds) || options.sessionLifetimeSeconds < 60 || options.sessionLifetimeSeconds > SERVICE_SESSION_TTL_SECONDS) {
+    throw new AgentPayAuthError("AUTH_SESSION_LIFETIME_INVALID", "Consumer session lifetime is invalid.");
+  }
+  if (options.scopes.length === 0) {
+    throw new AgentPayAuthError("AUTH_SCOPE_REQUIRED", "Consumer session requires at least one scope.");
+  }
+
+  const issuedAtDate = options.issuedAt ?? now;
+  const issuedAtMs = issuedAtDate.getTime();
+  if (!Number.isFinite(issuedAtMs)) {
+    throw new AgentPayAuthError("AUTH_CONTEXT_INVALID", "Consumer session issue time is invalid.");
+  }
+  const expiresAt = new Date(issuedAtMs + options.sessionLifetimeSeconds * 1000).toISOString();
+  if (now.getTime() >= new Date(expiresAt).getTime()) {
+    throw new AgentPayAuthError("SIWE_EXPIRED", "SIWE challenge no longer permits a new service session.");
+  }
+
+  const issuedAt = issuedAtDate.toISOString();
   const rawBytes = options.randomCredentialBytes?.() ?? randomBytes(32);
   if (rawBytes.byteLength !== 32) {
     throw new AgentPayAuthError("AUTH_CREDENTIAL_INVALID", "Session credential generator must return 32 bytes.");
@@ -130,21 +213,20 @@ export async function issueServiceSession(options: IssueServiceSessionOptions): 
   const credentialDigest = digestCredential(credential, options.serverSecret);
   const record: ServiceSessionRecord = Object.freeze({
     sessionId,
-    tenantId: binding.tenantId,
-    ownerAddress: recoveredOwner.toLowerCase(),
-    accountAddress: options.challenge.accountAddress.toLowerCase(),
-    homeChainId: options.challenge.chainId,
+    tenantId: options.binding.tenantId,
+    ownerAddress: options.binding.ownerAddress.toLowerCase(),
+    accountAddress: options.binding.accountAddress.toLowerCase(),
+    homeChainId: options.binding.homeChainId,
     audience: options.audience,
     environment: options.environment,
-    scopes: Object.freeze([...options.challenge.scopes]),
-    authenticationEpoch: binding.authenticationEpoch,
+    scopes: Object.freeze([...options.scopes]),
+    authenticationEpoch: options.binding.authenticationEpoch,
     issuedAt,
     expiresAt,
     lastUsedAt: issuedAt,
     credentialDigest,
   });
 
-  await options.sessionStore.create(record);
   const context = createSessionContext({ ...record, authEpoch: record.authenticationEpoch });
   return Object.freeze({ credential, context, record });
 }

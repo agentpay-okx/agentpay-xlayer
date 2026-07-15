@@ -110,6 +110,40 @@ describe("consumer SIWE session API", () => {
     assert.equal((deps.sessionStore as SessionStore).records.size, 0);
   });
 
+  it("refuses an OAuth-bound SIWE challenge so the legacy endpoint cannot bypass PKCE", async () => {
+    const deps = dependencies();
+    const api = createConsumerSessionApi(deps);
+    const oauthChallenge = createSiweChallenge({
+      challengeId: "oauth_challenge_123",
+      requestId: "authorization_123",
+      domain: "wallet.agentpay.site",
+      uri: "https://wallet.agentpay.site/mcp",
+      ownerAddress: owner.address,
+      accountAddress,
+      chainId: 1952,
+      nonce: "nonce_oauth_123456",
+      flow: "oauth_authorization",
+      issuedAt: "2026-07-12T00:00:00.000Z",
+      expiresAt: "2026-07-12T00:05:00.000Z",
+      scopes: ["wallet:read"],
+      sessionLifetimeSeconds: 3600,
+    });
+    await deps.challengeStore.create(oauthChallenge);
+
+    const response = await api.handle(
+      new Request("https://wallet.agentpay.site/auth/siwe/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          challengeId: oauthChallenge.challengeId,
+          signature: await owner.signMessage(oauthChallenge.message),
+        }),
+      }),
+    );
+    assert.equal(response.status, 404);
+    assert.equal((deps.sessionStore as SessionStore).records.size, 0);
+  });
+
   it("rejects unknown routes and oversized request bodies", async () => {
     const api = createConsumerSessionApi(dependencies());
     const notFound = await api.handle(new Request("https://wallet.agentpay.site/auth/other", { method: "POST" }));

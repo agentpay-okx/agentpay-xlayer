@@ -8,6 +8,7 @@ import {
 } from "@agentpay-ai/shared";
 import { createSiweChallenge, verifySiweChallengeSignature } from "../auth/siwe.ts";
 import type { ServiceSessionRecord } from "../auth/session.ts";
+import type { OAuthAuthorizationRecord, OAuthClientRecord } from "../auth/oauth.ts";
 
 import {
   createSupabaseAgentPayRepositories,
@@ -138,6 +139,48 @@ class AuthChallengeQuery extends QuerySpy {
   public override maybeSingle(): Promise<{ data: unknown; error: null }> {
     this.calls.push(["maybeSingle", []]);
     return Promise.resolve({ data: this.row, error: null });
+  }
+}
+
+class OAuthQuery {
+  public readonly calls: Array<[string, unknown[]]> = [];
+  public readonly inserted: Record<string, unknown>[] = [];
+  public updated: Record<string, unknown> | undefined;
+
+  public select(columns: string): this {
+    this.calls.push(["select", [columns]]);
+    return this;
+  }
+
+  public eq(column: string, value: string | number): this {
+    this.calls.push(["eq", [column, value]]);
+    return this;
+  }
+
+  public is(column: string, value: null): this {
+    this.calls.push(["is", [column, value]]);
+    return this;
+  }
+
+  public gt(column: string, value: string | number): this {
+    this.calls.push(["gt", [column, value]]);
+    return this;
+  }
+
+  public insert(row: Record<string, unknown>): Promise<{ error: null }> {
+    this.inserted.push(row);
+    return Promise.resolve({ error: null });
+  }
+
+  public update(row: Record<string, unknown>): this {
+    this.updated = row;
+    this.calls.push(["update", [row]]);
+    return this;
+  }
+
+  public maybeSingle(): Promise<{ data: null; error: null }> {
+    this.calls.push(["maybeSingle", []]);
+    return Promise.resolve({ data: null, error: null });
   }
 }
 
@@ -300,6 +343,103 @@ describe("tenant-scoped Supabase repositories", () => {
     await repositories.serviceSessions.create(session);
     assert.equal(queries.get("service_sessions")?.inserted?.credential_digest, "a".repeat(64));
     assert.equal(JSON.stringify(queries.get("service_sessions")?.inserted).includes("Bearer"), false);
+  });
+
+  it("persists opaque OAuth digests and conditionally consumes authorization codes", async () => {
+    const queries = new Map<string, OAuthQuery>();
+    const rpcCalls: Array<[string, Record<string, unknown>]> = [];
+    const client = {
+      from(table: string) {
+        const query = queries.get(table) ?? new OAuthQuery();
+        queries.set(table, query);
+        return query;
+      },
+      rpc(functionName: string, args: Record<string, unknown>) {
+        rpcCalls.push([functionName, args]);
+        if (functionName === "consume_oauth_admission") {
+          return Promise.resolve({ data: true, error: null });
+        }
+        if (functionName === "prune_oauth_authorization_data") {
+          return Promise.resolve({ data: null, error: null });
+        }
+        return Promise.resolve({ data: [], error: null });
+      },
+    } as unknown as AgentPaySupabaseClient;
+    const repositories = createSupabaseAgentPayRepositories(client);
+    const clientRecord: OAuthClientRecord = {
+      clientId: "client_123",
+      clientName: "AgentPay client",
+      redirectUris: ["http://127.0.0.1:4567/callback"],
+      createdAt: "2026-07-12T00:00:00.000Z",
+    };
+    const authorization: OAuthAuthorizationRecord = {
+      authorizationId: "authorization_123",
+      clientId: clientRecord.clientId,
+      redirectUri: clientRecord.redirectUris[0]!,
+      stateDigest: "a".repeat(64),
+      codeChallenge: "b".repeat(43),
+      resource: "https://wallet.agentpay.site/mcp",
+      scopes: ["wallet:read"],
+      issuedAt: "2026-07-12T00:00:00.000Z",
+      expiresAt: "2026-07-12T00:05:00.000Z",
+    };
+
+    await repositories.oauthClients.create(clientRecord);
+    await repositories.oauthAuthorizations.create(authorization);
+    assert.equal(queries.get("oauth_clients")?.inserted[0]?.client_id, "client_123");
+    assert.equal(queries.get("oauth_authorizations")?.inserted[0]?.state_digest, "a".repeat(64));
+    assert.equal(JSON.stringify(queries.get("oauth_authorizations")?.inserted[0]).includes("client-state"), false);
+
+    await repositories.oauthAuthorizations.bindSiweChallenge({
+      authorizationId: authorization.authorizationId,
+      challengeId: "challenge_123",
+      at: "2026-07-12T00:01:00.000Z",
+    });
+    await repositories.oauthAuthorizations.consumeAuthorizationCode({
+      authorizationId: authorization.authorizationId,
+      codeDigest: "c".repeat(64),
+      consumedAt: "2026-07-12T00:01:00.000Z",
+    });
+    const authorizationCalls = queries.get("oauth_authorizations")?.calls ?? [];
+    assert.ok(authorizationCalls.some(([name, args]) => name === "is" && args[0] === "consumed_at" && args[1] === null));
+    assert.ok(authorizationCalls.some(([name, args]) => name === "gt" && args[0] === "code_expires_at"));
+
+    await repositories.oauthAuthorizations.exchangeAuthorizationCode({
+      authorizationId: authorization.authorizationId,
+      codeDigest: "c".repeat(64),
+      consumedAt: "2026-07-12T00:01:00.000Z",
+      session: {
+        sessionId: "session_oauth_123",
+        tenantId: "tenant_a",
+        ownerAddress,
+        accountAddress,
+        homeChainId: 1952,
+        audience: "https://wallet.agentpay.site/mcp",
+        environment: "staging",
+        scopes: ["wallet:read"],
+        authenticationEpoch: 0,
+        issuedAt: "2026-07-12T00:01:00.000Z",
+        expiresAt: "2026-07-12T01:01:00.000Z",
+        lastUsedAt: "2026-07-12T00:01:00.000Z",
+        credentialDigest: "d".repeat(64),
+      },
+    });
+    assert.deepEqual(rpcCalls[0]?.[0], "exchange_oauth_authorization_code");
+    assert.equal(rpcCalls[0]?.[1].p_code_digest, "c".repeat(64));
+    assert.equal(rpcCalls[0]?.[1].p_session_credential_digest, "d".repeat(64));
+    assert.equal(JSON.stringify(rpcCalls[0]?.[1]).includes("Bearer"), false);
+
+    const admitted = await repositories.oauthAdmission.consume({
+      bucket: "registration",
+      keyDigest: "e".repeat(64),
+      now: new Date("2026-07-12T00:01:00.000Z"),
+      windowSeconds: 3600,
+      limit: 20,
+    });
+    await repositories.oauthAdmission.pruneExpired(new Date("2026-07-12T00:05:00.000Z"));
+    assert.equal(admitted, true);
+    assert.ok(rpcCalls.some(([name]) => name === "consume_oauth_admission"));
+    assert.ok(rpcCalls.some(([name]) => name === "prune_oauth_authorization_data"));
   });
 
   it("round-trips lowercased SIWE owners without changing the signed message", async () => {

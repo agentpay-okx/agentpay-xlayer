@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  MAINNET_MIGRATION_HEAD,
   MAINNET_USDT0_ADDRESS,
   buildMainnetShadowManifest,
   computeArtifactDigests,
@@ -37,6 +38,9 @@ describe("X Layer mainnet shadow manifest", () => {
     const result = validate(makeManifest());
     assert.equal(result.valid, true, result.errors.join("; "));
     assert.deepEqual(makeManifest().contract.allowedTokens, [MAINNET_USDT0_ADDRESS]);
+    assert.equal(MAINNET_MIGRATION_HEAD, "20260715110000_oauth_consumer_authorization");
+    assert.equal(makeManifest().database.migrationHead, MAINNET_MIGRATION_HEAD);
+    assert.equal(makeManifest().release.migrationHead, MAINNET_MIGRATION_HEAD);
   });
 
   it("rejects a staging chain or RPC reference in a production manifest", () => {

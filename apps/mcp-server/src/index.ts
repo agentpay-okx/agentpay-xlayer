@@ -13,6 +13,8 @@ export * from "./runtime/paid-execution-canary-ledger.ts";
 export * from "./auth/siwe.ts";
 export * from "./auth/session.ts";
 export * from "./auth/consumer-session-api.ts";
+export * from "./auth/oauth.ts";
+export * from "./auth/oauth-api.ts";
 export * from "./services/lifi.ts";
 export * from "./services/chain-executor.ts";
 export * from "./services/payment-authorization.ts";

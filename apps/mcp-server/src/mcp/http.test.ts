@@ -3,11 +3,22 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { prepareAuthorizationCodeRequest, startAuthorization } from "@modelcontextprotocol/sdk/client/auth.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Wallet } from "ethers";
 import type { PaymentPayload, PaymentRequirements } from "@okxweb3/x402-core/types";
 import { describe, it } from "node:test";
 
 import { createSessionContext, type SessionContext } from "@agentpay-ai/shared";
+import { createConsumerOAuthApi } from "../auth/oauth-api.ts";
+import type {
+  OAuthAuthorizationRecord,
+  OAuthAuthorizationStore,
+  OAuthClientRecord,
+  OAuthClientStore,
+} from "../auth/oauth.ts";
+import { authenticateServiceSession, type AuthChallengeStore, type ServiceSessionRecord, type ServiceSessionStore } from "../auth/session.ts";
+import type { SiweChallenge } from "../auth/siwe.ts";
 import type { AgentPayRuntime } from "../runtime/agentpay-runtime.ts";
 import { DEFAULT_CANARY_CAPS } from "../runtime/paid-execution-canary.ts";
 import type { CanaryLedgerStore } from "../runtime/paid-execution-canary-ledger.ts";
@@ -936,11 +947,84 @@ describe("startAgentPayHttpServer", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
       });
+      const undiscoverable = await fetch(new URL("/.well-known/oauth-protected-resource/mcp", server.url));
 
       assert.equal(health.status, 200);
       assert.equal(response.status, 401);
+      assert.equal(response.headers.get("www-authenticate"), "Bearer");
+      assert.equal(undiscoverable.status, 404);
+      assert.equal(response.headers.get("cache-control"), "no-store");
       assert.deepEqual(await response.json(), { error: "Consumer authentication required." });
       assert.equal(runtimeCreations, 0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("advertises consumer protected-resource and authorization-server metadata", async () => {
+    const server = await startAgentPayHttpServer({
+      env: { ...mcpEnv(), AGENTPAY_ENVIRONMENT: "staging" },
+      hostname: "127.0.0.1",
+      port: 0,
+      mode: "consumer",
+      consumerAuth: {
+        async authenticate() {
+          throw new Error("MCP auth should not be reached for OAuth discovery.");
+        },
+      },
+      oauthApi: {
+        async handle(request) {
+          const pathname = new URL(request.url).pathname;
+          if (pathname === "/.well-known/oauth-protected-resource/mcp") {
+            return new Response(JSON.stringify({
+              resource: "https://wallet.agentpay.site/mcp",
+              authorization_servers: ["https://wallet.agentpay.site"],
+              scopes_supported: ["wallet:read", "payment:prepare", "payment:read", "payment:review", "session:manage"],
+              bearer_methods_supported: ["header"],
+            }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+          }
+          return new Response(JSON.stringify({
+            issuer: "https://wallet.agentpay.site",
+            authorization_endpoint: "https://wallet.agentpay.site/oauth/authorize",
+            token_endpoint: "https://wallet.agentpay.site/oauth/token",
+            registration_endpoint: "https://wallet.agentpay.site/oauth/register",
+            response_types_supported: ["code"],
+            grant_types_supported: ["authorization_code"],
+            token_endpoint_auth_methods_supported: ["none"],
+            code_challenge_methods_supported: ["S256"],
+            scopes_supported: ["wallet:read", "payment:prepare", "payment:read", "payment:review", "session:manage"],
+          }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+        },
+      },
+      createRuntime() {
+        return createRuntime();
+      },
+    });
+
+    try {
+      const resourceMetadata = await fetch(new URL("/.well-known/oauth-protected-resource/mcp", server.url));
+      assert.equal(resourceMetadata.status, 200);
+      assert.deepEqual(await resourceMetadata.json(), {
+        resource: "https://wallet.agentpay.site/mcp",
+        authorization_servers: ["https://wallet.agentpay.site"],
+        scopes_supported: ["wallet:read", "payment:prepare", "payment:read", "payment:review", "session:manage"],
+        bearer_methods_supported: ["header"],
+      });
+
+      const authorizationMetadata = await fetch(new URL("/.well-known/oauth-authorization-server", server.url));
+      assert.equal(authorizationMetadata.status, 200);
+      assert.deepEqual(await authorizationMetadata.json(), {
+        issuer: "https://wallet.agentpay.site",
+        authorization_endpoint: "https://wallet.agentpay.site/oauth/authorize",
+        token_endpoint: "https://wallet.agentpay.site/oauth/token",
+        registration_endpoint: "https://wallet.agentpay.site/oauth/register",
+        response_types_supported: ["code"],
+        grant_types_supported: ["authorization_code"],
+        token_endpoint_auth_methods_supported: ["none"],
+        code_challenge_methods_supported: ["S256"],
+        scopes_supported: ["wallet:read", "payment:prepare", "payment:read", "payment:review", "session:manage"],
+      });
+      assert.equal(authorizationMetadata.headers.get("cache-control"), "no-store");
     } finally {
       await server.close();
     }
@@ -1056,7 +1140,7 @@ describe("startAgentPayHttpServer", () => {
     }
   });
 
-  it("routes SIWE challenge and verify requests to the dedicated session API", async () => {
+  it("does not expose the legacy SIWE bearer endpoint without an explicit self-hosted opt-in", async () => {
     const paths: string[] = [];
     const server = await startAgentPayHttpServer({
       env: { ...mcpEnv(), AGENTPAY_ENVIRONMENT: "staging" },
@@ -1088,8 +1172,263 @@ describe("startAgentPayHttpServer", () => {
         headers: { "content-type": "application/json" },
         body: "{}",
       });
+      assert.equal(response.status, 404);
+      assert.deepEqual(paths, []);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("routes the legacy SIWE session API only after an explicit self-hosted opt-in", async () => {
+    const paths: string[] = [];
+    const server = await startAgentPayHttpServer({
+      env: {
+        ...mcpEnv(),
+        AGENTPAY_ENVIRONMENT: "staging",
+        AGENTPAY_ENABLE_LEGACY_SIWE_SESSION_API: "true",
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+      mode: "consumer",
+      consumerAuth: {
+        async authenticate() {
+          throw new Error("MCP auth should not be reached for the legacy session API route.");
+        },
+      },
+      sessionApi: {
+        async handle(request) {
+          paths.push(new URL(request.url).pathname);
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        },
+      },
+      createRuntime() {
+        return createRuntime();
+      },
+    });
+
+    try {
+      const response = await fetch(new URL("/auth/siwe/challenge", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
       assert.equal(response.status, 200);
       assert.deepEqual(paths, ["/auth/siwe/challenge"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("routes OAuth authorization endpoints before consumer MCP authentication", async () => {
+    const paths: string[] = [];
+    const server = await startAgentPayHttpServer({
+      env: { ...mcpEnv(), AGENTPAY_ENVIRONMENT: "staging" },
+      hostname: "127.0.0.1",
+      port: 0,
+      mode: "consumer",
+      consumerAuth: {
+        async authenticate() {
+          throw new Error("MCP auth should not be reached for OAuth routes.");
+        },
+      },
+      sessionApi: {
+        async handle() {
+          return new Response(JSON.stringify({ error: "Unexpected session route." }), { status: 500 });
+        },
+      },
+      oauthApi: {
+        async preflight(request) {
+          paths.push(`preflight:${new URL(request.url).pathname}`);
+          assert.equal(request.headers.get("x-agentpay-oauth-client"), "203.0.113.10");
+          return undefined;
+        },
+        async handle(request) {
+          paths.push(new URL(request.url).pathname);
+          assert.ok(request.headers.get("x-agentpay-oauth-client"));
+          return new Response(JSON.stringify({ client_id: "client_test" }), {
+            status: 201,
+            headers: { "cache-control": "no-store", "content-type": "application/json" },
+          });
+        },
+      },
+      createRuntime() {
+        return createRuntime();
+      },
+    });
+
+    try {
+      const response = await fetch(new URL("/oauth/register", server.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-real-ip": "203.0.113.10",
+          "x-forwarded-for": "198.51.100.200, 203.0.113.250",
+        },
+        body: JSON.stringify({ redirect_uris: ["http://127.0.0.1:4567/callback"] }),
+      });
+      assert.equal(response.status, 201);
+      assert.deepEqual(await response.json(), { client_id: "client_test" });
+      assert.deepEqual(paths, ["preflight:/oauth/register", "/oauth/register"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("completes MCP discovery, DCR, PKCE, SIWE, token exchange, and an authenticated MCP request", async () => {
+    const owner = new Wallet(`0x${"3".repeat(64)}`);
+    const stores = createOAuthHttpTestStores();
+    const serverSecret = "oauth-http-test-session-secret";
+    const oauthApi = createConsumerOAuthApi({
+      clientStore: stores.clientStore,
+      authorizationStore: stores.authorizationStore,
+      challengeStore: stores.challengeStore,
+      serverSecret,
+      audience: "https://wallet.agentpay.site/mcp",
+      environment: "staging",
+      clock: () => new Date("2026-07-12T00:00:00.000Z"),
+      resolveOwner: async (ownerAddress, chainId) => ({
+        tenantId: "tenant_oauth_http",
+        ownerAddress,
+        accountAddress: "0x2222222222222222222222222222222222222222",
+        homeChainId: chainId,
+        authenticationEpoch: 0,
+        environment: "staging",
+      }),
+      currentAuthenticationEpoch: async () => 0,
+    });
+    const server = await startAgentPayHttpServer({
+      env: { ...mcpEnv(), AGENTPAY_ENVIRONMENT: "staging" },
+      hostname: "127.0.0.1",
+      port: 0,
+      mode: "consumer",
+      oauthApi,
+      consumerAuth: {
+        async authenticate(credential, requiredScope) {
+          return authenticateServiceSession({
+            credential,
+            sessionStore: stores.sessionStore,
+            serverSecret,
+            audience: "https://wallet.agentpay.site/mcp",
+            environment: "staging",
+            clock: () => new Date("2026-07-12T00:00:00.000Z"),
+            currentAuthenticationEpoch: async () => 0,
+            requiredScope,
+          });
+        },
+      },
+      createRuntime() {
+        return createRuntime();
+      },
+    });
+
+    const localize = (url: URL | string) => {
+      const remote = new URL(url);
+      return new URL(`${remote.pathname}${remote.search}`, server.url);
+    };
+
+    try {
+      const unauthenticated = await fetch(server.mcpUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      });
+      assert.equal(unauthenticated.status, 401);
+      const resourceMetadataMatch = /resource_metadata="([^"]+)"/.exec(unauthenticated.headers.get("www-authenticate") ?? "");
+      assert.ok(resourceMetadataMatch);
+
+      const protectedResource = await fetch(localize(resourceMetadataMatch[1]!));
+      assert.equal(protectedResource.status, 200);
+      const protectedResourceMetadata = (await protectedResource.json()) as {
+        resource: string;
+        authorization_servers: string[];
+      };
+      assert.equal(protectedResourceMetadata.resource, "https://wallet.agentpay.site/mcp");
+
+      const authorizationServer = protectedResourceMetadata.authorization_servers[0]!;
+      const authorizationMetadataResponse = await fetch(localize(`${authorizationServer}/.well-known/oauth-authorization-server`));
+      assert.equal(authorizationMetadataResponse.status, 200);
+      const authorizationMetadata = await authorizationMetadataResponse.json() as Record<string, unknown>;
+      const registrationResponse = await fetch(localize(authorizationMetadata.registration_endpoint as string), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_name: "SDK OAuth HTTP test",
+          redirect_uris: ["http://127.0.0.1:4588/callback"],
+          grant_types: ["authorization_code"],
+          response_types: ["code"],
+          token_endpoint_auth_method: "none",
+        }),
+      });
+      assert.equal(registrationResponse.status, 201);
+      const clientInformation = await registrationResponse.json() as {
+        client_id: string;
+        redirect_uris: string[];
+      };
+
+      const { authorizationUrl, codeVerifier } = await startAuthorization(authorizationServer, {
+        metadata: authorizationMetadata as never,
+        clientInformation: clientInformation as never,
+        redirectUrl: clientInformation.redirect_uris[0]!,
+        scope: "wallet:read",
+        resource: new URL(protectedResourceMetadata.resource),
+      });
+      assert.equal(authorizationUrl.searchParams.has("state"), false);
+      const authorizationPage = await fetch(localize(authorizationUrl));
+      assert.equal(authorizationPage.status, 200);
+      assert.match(authorizationPage.headers.get("content-security-policy") ?? "", /script-src 'nonce-/);
+      const browserCookie = authorizationPage.headers.get("set-cookie");
+      assert.ok(browserCookie);
+      const authorizationId = /authorizationId":"([^"]+)"/.exec(await authorizationPage.text())?.[1];
+      assert.ok(authorizationId);
+
+      const challengeResponse = await fetch(localize("https://wallet.agentpay.site/oauth/siwe/challenge"), {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: browserCookie },
+        body: JSON.stringify({ authorizationId, ownerAddress: owner.address, chainId: 1952 }),
+      });
+      assert.equal(challengeResponse.status, 200);
+      const challenge = await challengeResponse.json() as { challengeId: string; message: string };
+      const verifiedResponse = await fetch(localize("https://wallet.agentpay.site/oauth/siwe/verify"), {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: browserCookie },
+        body: JSON.stringify({
+          authorizationId,
+          challengeId: challenge.challengeId,
+          signature: await owner.signMessage(challenge.message),
+        }),
+      });
+      assert.equal(verifiedResponse.status, 200);
+      const callback = new URL((await verifiedResponse.json() as { redirectUri: string }).redirectUri);
+      assert.equal(callback.searchParams.has("state"), false);
+      const code = callback.searchParams.get("code");
+      assert.ok(code);
+
+      const tokenRequest = prepareAuthorizationCodeRequest(code, codeVerifier, clientInformation.redirect_uris[0]!);
+      tokenRequest.set("client_id", clientInformation.client_id);
+      tokenRequest.set("resource", protectedResourceMetadata.resource);
+      const tokenResponse = await fetch(localize(authorizationMetadata.token_endpoint as string), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: tokenRequest,
+      });
+      assert.equal(tokenResponse.status, 200);
+      const token = await tokenResponse.json() as { access_token: string; token_type: string };
+      assert.equal(token.token_type, "Bearer");
+
+      const authenticatedMcp = await fetch(server.mcpUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token.access_token}`,
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+      });
+      assert.equal(authenticatedMcp.status, 200);
+      assert.match(await authenticatedMcp.text(), /execute_payment/);
     } finally {
       await server.close();
     }
@@ -1310,6 +1649,137 @@ function createRuntime(overrides: Partial<AgentPayRuntime> = {}): AgentPayRuntim
       throw new Error("listPaymentEvents was not expected.");
     },
     ...overrides,
+  };
+}
+
+function createOAuthHttpTestStores(): {
+  clientStore: OAuthClientStore;
+  authorizationStore: OAuthAuthorizationStore;
+  challengeStore: AuthChallengeStore;
+  sessionStore: ServiceSessionStore;
+} {
+  const clients = new Map<string, OAuthClientRecord>();
+  const authorizations = new Map<string, OAuthAuthorizationRecord>();
+  const challenges = new Map<string, SiweChallenge>();
+  const sessions = new Map<string, ServiceSessionRecord>();
+
+  const sessionStore: ServiceSessionStore = {
+    async create(record): Promise<void> {
+      sessions.set(record.sessionId, record);
+    },
+    async findByCredentialDigest(digest): Promise<ServiceSessionRecord | null> {
+      return [...sessions.values()].find((record) => record.credentialDigest === digest) ?? null;
+    },
+    async revoke(sessionId, revokedAt): Promise<void> {
+      const record = sessions.get(sessionId);
+      if (record) sessions.set(sessionId, { ...record, revokedAt });
+    },
+    async revokeAll(tenantId, revokedAt): Promise<void> {
+      for (const [sessionId, record] of sessions) {
+        if (record.tenantId === tenantId) sessions.set(sessionId, { ...record, revokedAt });
+      }
+    },
+    async touch(sessionId, lastUsedAt): Promise<void> {
+      const record = sessions.get(sessionId);
+      if (record) sessions.set(sessionId, { ...record, lastUsedAt });
+    },
+  };
+
+  return {
+    clientStore: {
+      async create(record): Promise<void> {
+        clients.set(record.clientId, record);
+      },
+      async get(clientId): Promise<OAuthClientRecord | null> {
+        return clients.get(clientId) ?? null;
+      },
+      async touch(clientId, lastUsedAt): Promise<void> {
+        const record = clients.get(clientId);
+        if (!record) throw new Error("OAuth client unavailable");
+        clients.set(clientId, { ...record, lastUsedAt });
+      },
+    },
+    authorizationStore: {
+      async create(record): Promise<void> {
+        authorizations.set(record.authorizationId, record);
+      },
+      async get(authorizationId): Promise<OAuthAuthorizationRecord | null> {
+        return authorizations.get(authorizationId) ?? null;
+      },
+      async bindSiweChallenge(input): Promise<boolean> {
+        const record = authorizations.get(input.authorizationId);
+        if (!record || record.siweChallengeId || record.codeDigest || Date.parse(record.expiresAt) <= Date.parse(input.at)) return false;
+        authorizations.set(input.authorizationId, { ...record, siweChallengeId: input.challengeId });
+        return true;
+      },
+      async issueAuthorizationCode(input): Promise<boolean> {
+        const record = authorizations.get(input.authorizationId);
+        if (
+          !record ||
+          record.siweChallengeId !== input.challengeId ||
+          record.codeDigest ||
+          Date.parse(record.expiresAt) <= Date.parse(input.codeIssuedAt)
+        ) return false;
+        authorizations.set(input.authorizationId, {
+          ...record,
+          tenantId: input.tenantId,
+          ownerAddress: input.ownerAddress.toLowerCase(),
+          accountAddress: input.accountAddress.toLowerCase(),
+          homeChainId: input.homeChainId,
+          environment: input.environment,
+          authenticationEpoch: input.authenticationEpoch,
+          codeDigest: input.codeDigest,
+          codeIssuedAt: input.codeIssuedAt,
+          codeExpiresAt: input.codeExpiresAt,
+        });
+        return true;
+      },
+      async findByCodeDigest(codeDigest): Promise<OAuthAuthorizationRecord | null> {
+        return [...authorizations.values()].find((record) => record.codeDigest === codeDigest) ?? null;
+      },
+      async consumeAuthorizationCode(input): Promise<OAuthAuthorizationRecord | null> {
+        const record = authorizations.get(input.authorizationId);
+        if (
+          !record ||
+          record.codeDigest !== input.codeDigest ||
+          record.consumedAt ||
+          !record.codeExpiresAt ||
+          Date.parse(record.codeExpiresAt) <= Date.parse(input.consumedAt)
+        ) return null;
+        const consumed = { ...record, consumedAt: input.consumedAt };
+        authorizations.set(input.authorizationId, consumed);
+        return consumed;
+      },
+      async exchangeAuthorizationCode(input): Promise<OAuthAuthorizationRecord | null> {
+        const record = authorizations.get(input.authorizationId);
+        if (
+          !record ||
+          record.codeDigest !== input.codeDigest ||
+          record.consumedAt ||
+          !record.codeExpiresAt ||
+          Date.parse(record.codeExpiresAt) <= Date.parse(input.consumedAt)
+        ) return null;
+        await sessionStore.create(input.session);
+        const consumed = { ...record, consumedAt: input.consumedAt };
+        authorizations.set(input.authorizationId, consumed);
+        return consumed;
+      },
+    },
+    challengeStore: {
+      async create(record): Promise<void> {
+        challenges.set(record.challengeId, record);
+      },
+      async get(challengeId): Promise<SiweChallenge | null> {
+        return challenges.get(challengeId) ?? null;
+      },
+      async consume(challengeId, consumedAt): Promise<boolean> {
+        const record = challenges.get(challengeId);
+        if (!record || record.consumedAt) return false;
+        challenges.set(challengeId, { ...record, consumedAt });
+        return true;
+      },
+    },
+    sessionStore,
   };
 }
 

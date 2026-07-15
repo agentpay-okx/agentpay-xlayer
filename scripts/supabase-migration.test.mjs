@@ -11,6 +11,7 @@ const paidExecutionLifecycleMigrationPath = "supabase/migrations/20260713150000_
 const paidExecutionChallengeOutboxMigrationPath = "supabase/migrations/20260713160000_paid_execution_challenge_outbox.sql";
 const paidExecutionCanaryLedgerMigrationPath = "supabase/migrations/20260713170000_paid_execution_canary_ledger.sql";
 const canaryOwnerRebindingMigrationPath = "supabase/migrations/20260714180000_canary_owner_rebinding.sql";
+const oauthConsumerAuthorizationMigrationPath = "supabase/migrations/20260715110000_oauth_consumer_authorization.sql";
 const migrationsDir = "supabase/migrations";
 const requiredTables = ["setup_intents", "agent_wallets", "payment_intents", "payment_events"];
 const requiredSecurityStatements = [
@@ -197,6 +198,41 @@ describe("AgentPay Supabase migration", () => {
         "create unique index if not exists verified_owner_identities_verified_owner_idx on public.verified_owner_identities (lower(owner_address)) where status = 'verified'",
       ),
     );
+    assert.ok(sql.includes("notify pgrst, 'reload schema'"));
+  });
+
+  it("adds opaque OAuth clients and one-time PKCE authorization records", async () => {
+    const sql = normalizeSql(await readFile(oauthConsumerAuthorizationMigrationPath, "utf8"));
+
+    assert.ok(sql.includes("add column if not exists session_lifetime_seconds integer not null default 604800"));
+    assert.ok(sql.includes("add column if not exists flow text not null default 'legacy_session'"));
+    assert.ok(sql.includes("check (flow in ('legacy_session', 'oauth_authorization'))"));
+    assert.ok(sql.includes("create table if not exists public.oauth_clients"));
+    assert.ok(sql.includes("redirect_uris text[] not null"));
+    assert.ok(sql.includes("last_used_at timestamptz not null default now()"));
+    assert.ok(sql.includes("create table if not exists public.oauth_authorizations"));
+    assert.ok(sql.includes("state_digest text not null"));
+    assert.ok(sql.includes("code_challenge text not null"));
+    assert.ok(sql.includes("code_digest text unique"));
+    assert.ok(sql.includes("consumed_at timestamptz"));
+    assert.ok(sql.includes("foreign key (client_id) references public.oauth_clients"));
+    assert.ok(sql.includes("alter table public.oauth_clients enable row level security"));
+    assert.ok(sql.includes("alter table public.oauth_authorizations enable row level security"));
+    assert.ok(sql.includes("revoke all on table public.oauth_clients from public, anon, authenticated"));
+    assert.ok(sql.includes("revoke all on table public.oauth_authorizations from public, anon, authenticated"));
+    assert.ok(sql.includes("grant select, insert, update on table public.oauth_clients, public.oauth_authorizations, public.oauth_rate_limit_buckets to service_role"));
+    assert.ok(sql.includes("create index if not exists oauth_authorizations_code_digest_idx"));
+    assert.ok(sql.includes("create table if not exists public.oauth_rate_limit_buckets"));
+    assert.ok(sql.includes("key_digest text not null check (key_digest ~ '^[0-9a-f]{64}$')"));
+    assert.ok(sql.includes("create or replace function public.consume_oauth_admission"));
+    assert.ok(sql.includes("create or replace function public.prune_oauth_authorization_data"));
+    assert.ok(sql.includes("delete from public.oauth_authorizations"));
+    assert.ok(sql.includes("delete from public.oauth_clients as client"));
+    assert.ok(sql.includes("alter table public.oauth_rate_limit_buckets enable row level security"));
+    assert.ok(sql.includes("create or replace function public.exchange_oauth_authorization_code"));
+    assert.ok(sql.includes("insert into public.service_sessions"));
+    assert.ok(sql.includes("revoke all on function public.exchange_oauth_authorization_code"));
+    assert.ok(sql.includes("grant execute on function public.exchange_oauth_authorization_code"));
     assert.ok(sql.includes("notify pgrst, 'reload schema'"));
   });
 

@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import type { PaymentIntentRecord } from "@agentpay-ai/shared";
 
 import {
+  MAINNET_MIGRATION_HEAD,
   assertProductionExecutionAllowed,
   computeManifestSha256,
   evaluateProductionReadiness,
@@ -106,6 +107,12 @@ const exactPaymentConfig = {
 };
 
 describe("production readiness gate", () => {
+  it("pins production readiness to the OAuth consumer authorization migration", () => {
+    assert.equal(MAINNET_MIGRATION_HEAD, "20260715110000_oauth_consumer_authorization");
+    assert.equal(baseManifest.database.migrationHead, MAINNET_MIGRATION_HEAD);
+    assert.equal(baseManifest.release.migrationHead, MAINNET_MIGRATION_HEAD);
+  });
+
   it("requires explicit production aliases and rejects generic or staging boundaries", () => {
     const valid = validateProductionEnvironment(productionEnv());
     assert.equal(valid.valid, true, valid.errors.join("; "));

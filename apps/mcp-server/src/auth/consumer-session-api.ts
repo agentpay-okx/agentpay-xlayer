@@ -105,6 +105,7 @@ async function handleChallenge(
       accountAddress: input.accountAddress,
       chainId: input.chainId,
       nonce: dependencies.createNonce?.() ?? cryptoRandomHex(16),
+      flow: "legacy_session",
       issuedAt: issuedAt.toISOString(),
       expiresAt: new Date(issuedAt.getTime() + SIWE_CHALLENGE_TTL_SECONDS * 1000).toISOString(),
       scopes: input.scopes ?? DEFAULT_SESSION_SCOPES,
@@ -134,7 +135,7 @@ async function handleVerify(
     }
     const input = verifyRequestSchema.parse(await readJsonBody(request));
     const challenge = await dependencies.challengeStore.get(input.challengeId);
-    if (!challenge) {
+    if (!challenge || challenge.flow !== "legacy_session") {
       return jsonResponse({ error: "SIWE challenge unavailable." }, 404);
     }
     const issued = await issueServiceSession({

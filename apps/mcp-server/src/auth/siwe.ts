@@ -10,7 +10,11 @@ export const AGENTPAY_SIWE_DOMAIN = "wallet.agentpay.site";
 export const AGENTPAY_CONSUMER_URI = "https://wallet.agentpay.site/mcp";
 export const SIWE_CHALLENGE_TTL_SECONDS = 5 * 60;
 export const SERVICE_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+export const OAUTH_SERVICE_SESSION_TTL_SECONDS = 60 * 60;
 export const SUPPORTED_XLAYER_CHAIN_IDS = new Set([196, 1952]);
+export const SIWE_CHALLENGE_FLOWS = ["legacy_session", "oauth_authorization"] as const;
+export type SiweChallengeFlow = (typeof SIWE_CHALLENGE_FLOWS)[number];
+const supportedSessionLifetimes = new Set([SERVICE_SESSION_TTL_SECONDS, OAUTH_SERVICE_SESSION_TTL_SECONDS]);
 
 const allowedScopes = new Set<SessionScope>([
   "wallet:read",
@@ -37,9 +41,10 @@ export interface SiweChallenge {
   readonly accountAddress: string;
   readonly chainId: 196 | 1952;
   readonly nonce: string;
+  readonly flow: SiweChallengeFlow;
   readonly issuedAt: string;
   readonly expiresAt: string;
-  readonly sessionLifetimeSeconds: typeof SERVICE_SESSION_TTL_SECONDS;
+  readonly sessionLifetimeSeconds: number;
   readonly scopes: readonly SessionScope[];
   readonly message: string;
   readonly consumedAt?: string;
@@ -54,9 +59,11 @@ export interface CreateSiweChallengeInput {
   accountAddress: string;
   chainId: number;
   nonce: string;
+  flow?: SiweChallengeFlow;
   issuedAt: string;
   expiresAt: string;
   scopes: readonly SessionScope[];
+  sessionLifetimeSeconds?: number;
 }
 
 export function createSiweChallenge(input: CreateSiweChallengeInput): SiweChallenge {
@@ -78,6 +85,10 @@ export function createSiweChallenge(input: CreateSiweChallengeInput): SiweChalle
   if (!input.challengeId.trim() || !input.requestId.trim()) {
     throw new AgentPayAuthError("SIWE_REQUEST_INVALID", "SIWE challenge identifiers are required.");
   }
+  const flow = input.flow ?? "legacy_session";
+  if (!SIWE_CHALLENGE_FLOWS.includes(flow)) {
+    throw new AgentPayAuthError("SIWE_FLOW_INVALID", "SIWE challenge flow is invalid.");
+  }
 
   const scopes = [...new Set(input.scopes)].sort();
   if (scopes.length === 0 || scopes.some((scope) => !allowedScopes.has(scope))) {
@@ -85,6 +96,11 @@ export function createSiweChallenge(input: CreateSiweChallengeInput): SiweChalle
   }
   for (const scope of scopes) {
     sessionScopeSchema.parse(scope);
+  }
+
+  const sessionLifetimeSeconds = input.sessionLifetimeSeconds ?? SERVICE_SESSION_TTL_SECONDS;
+  if (!supportedSessionLifetimes.has(sessionLifetimeSeconds)) {
+    throw new AgentPayAuthError("SIWE_SESSION_LIFETIME_INVALID", "SIWE session lifetime is invalid.");
   }
 
   const issuedAt = new Date(input.issuedAt);
@@ -105,9 +121,10 @@ export function createSiweChallenge(input: CreateSiweChallengeInput): SiweChalle
     accountAddress: getAddress(input.accountAddress).toLowerCase(),
     chainId: input.chainId as 196 | 1952,
     nonce: input.nonce,
+    flow,
     issuedAt: issuedAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
-    sessionLifetimeSeconds: SERVICE_SESSION_TTL_SECONDS,
+    sessionLifetimeSeconds,
     scopes: Object.freeze(scopes as SessionScope[]),
   } as const;
 
@@ -125,7 +142,8 @@ export async function verifySiweChallengeSignature(
   if (
     challenge.domain !== AGENTPAY_SIWE_DOMAIN ||
     challenge.uri !== AGENTPAY_CONSUMER_URI ||
-    challenge.sessionLifetimeSeconds !== SERVICE_SESSION_TTL_SECONDS
+    !SIWE_CHALLENGE_FLOWS.includes(challenge.flow) ||
+    !supportedSessionLifetimes.has(challenge.sessionLifetimeSeconds)
   ) {
     throw new AgentPayAuthError("SIWE_MESSAGE_MISMATCH", "SIWE challenge binding is invalid.");
   }
@@ -165,7 +183,7 @@ export async function verifySiweChallengeSignature(
 function buildSiweMessage(
   input: Pick<
     SiweChallenge,
-    "domain" | "ownerAddress" | "uri" | "issuedAt" | "expiresAt" | "chainId" | "nonce" | "requestId" | "accountAddress" | "scopes"
+    "domain" | "ownerAddress" | "uri" | "issuedAt" | "expiresAt" | "chainId" | "nonce" | "requestId" | "accountAddress" | "scopes" | "flow"
   > & { sessionLifetimeSeconds?: number },
 ): string {
   const resources = [
@@ -186,6 +204,7 @@ function buildSiweMessage(
     `Issued At: ${input.issuedAt}`,
     `Expiration Time: ${input.expiresAt}`,
     `Session Lifetime: ${input.sessionLifetimeSeconds ?? SERVICE_SESSION_TTL_SECONDS} seconds`,
+    `Authorization Flow: ${input.flow}`,
     `Request ID: ${input.requestId}`,
     "Resources:",
     ...resources,

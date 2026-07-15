@@ -1,7 +1,7 @@
 import { EventEmitter, once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { isIP, type AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -16,6 +16,7 @@ import { AgentPayAuthError, type SessionContext } from "@agentpay-ai/shared";
 import { AGENTPAY_CONSUMER_URI } from "../auth/siwe.ts";
 import { authenticateServiceSession } from "../auth/session.ts";
 import { createConsumerSessionApi, type ConsumerSessionApi } from "../auth/consumer-session-api.ts";
+import { createConsumerOAuthApi, type ConsumerOAuthApi } from "../auth/oauth-api.ts";
 import { createSupabaseAgentPayRepositoriesFromConfig } from "../services/supabase.ts";
 import {
   evaluateProductionReadiness,
@@ -81,6 +82,9 @@ const defaultPort = 3001;
 const defaultMcpPath = "/mcp";
 const defaultHealthPath = "/healthz";
 const freeJsonRpcMethods = new Set(["initialize", "notifications/initialized", "ping", "tools/list"]);
+const consumerAuthorizationServer = "https://wallet.agentpay.site";
+const consumerResourceMetadataPath = "/.well-known/oauth-protected-resource/mcp";
+const consumerAuthorizationMetadataPath = "/.well-known/oauth-authorization-server";
 
 export interface AgentPayHttpServer {
   url: string;
@@ -110,6 +114,7 @@ export interface StartAgentPayHttpServerOptions {
   mode?: "public" | "consumer";
   consumerAuth?: ConsumerSessionAuthenticator;
   sessionApi?: ConsumerSessionApi;
+  oauthApi?: ConsumerOAuthApi;
 }
 
 export async function startAgentPayHttpServer(options: StartAgentPayHttpServerOptions = {}): Promise<AgentPayHttpServer> {
@@ -183,41 +188,69 @@ export async function startAgentPayHttpServer(options: StartAgentPayHttpServerOp
   }
   let consumerAuth = options.consumerAuth;
   let sessionApi: ConsumerSessionApi | undefined = options.sessionApi;
-  if (mode === "consumer" && (!consumerAuth || !sessionApi)) {
-    if (!config.sessionHashKey && !consumerAuth) {
+  let oauthApi: ConsumerOAuthApi | undefined = options.oauthApi;
+  const legacySiweSessionApiEnabled = mode === "consumer" && isEnabledFlag(
+    (options.env ?? process.env).AGENTPAY_ENABLE_LEGACY_SIWE_SESSION_API,
+  );
+  let authRepositories: ReturnType<typeof createSupabaseAgentPayRepositoriesFromConfig> | undefined;
+  const getAuthRepositories = () => {
+    authRepositories ??= createSupabaseAgentPayRepositoriesFromConfig({
+      supabaseUrl: config.supabaseUrl,
+      serviceRoleKey: config.serviceRoleKey,
+    });
+    return authRepositories;
+  };
+  if (mode === "consumer" && !consumerAuth) {
+    if (!config.sessionHashKey) {
       throw new AgentPayAuthError("AUTH_SECRET_REQUIRED", "Consumer mode requires AGENTPAY_SESSION_HASH_KEY.");
     }
-    if (config.sessionHashKey) {
-      const authRepositories = createSupabaseAgentPayRepositoriesFromConfig({
-        supabaseUrl: config.supabaseUrl,
-        serviceRoleKey: config.serviceRoleKey,
-      });
-      const environment = config.environment!;
-      consumerAuth ??= {
-        async authenticate(credential, requiredScope) {
-          return authenticateServiceSession({
-            credential,
-            sessionStore: authRepositories.serviceSessions,
-            serverSecret: config.sessionHashKey!,
-            audience: AGENTPAY_CONSUMER_URI,
-            environment,
-            clock: () => new Date(),
-            currentAuthenticationEpoch: authRepositories.tenantBindings.getAuthenticationEpoch,
-            currentTenantState: authRepositories.tenantBindings.getTenantState,
-            requiredScope,
-          });
-        },
-      };
-      sessionApi ??= createConsumerSessionApi({
-        challengeStore: authRepositories.authChallenges,
-        sessionStore: authRepositories.serviceSessions,
-        serverSecret: config.sessionHashKey,
-        audience: AGENTPAY_CONSUMER_URI,
-        environment,
-        clock: () => new Date(),
-        resolveTenant: authRepositories.tenantBindings.resolveTenant,
-      });
+    const repositories = getAuthRepositories();
+    const environment = config.environment!;
+    consumerAuth = {
+      async authenticate(credential, requiredScope) {
+        return authenticateServiceSession({
+          credential,
+          sessionStore: repositories.serviceSessions,
+          serverSecret: config.sessionHashKey!,
+          audience: AGENTPAY_CONSUMER_URI,
+          environment,
+          clock: () => new Date(),
+          currentAuthenticationEpoch: repositories.tenantBindings.getAuthenticationEpoch,
+          currentTenantState: repositories.tenantBindings.getTenantState,
+          requiredScope,
+        });
+      },
+    };
+  }
+  if (mode === "consumer" && legacySiweSessionApiEnabled && !sessionApi) {
+    if (!config.sessionHashKey) {
+      throw new AgentPayAuthError("AUTH_SECRET_REQUIRED", "Legacy SIWE session API requires AGENTPAY_SESSION_HASH_KEY.");
     }
+    const repositories = getAuthRepositories();
+    sessionApi = createConsumerSessionApi({
+      challengeStore: repositories.authChallenges,
+      sessionStore: repositories.serviceSessions,
+      serverSecret: config.sessionHashKey,
+      audience: AGENTPAY_CONSUMER_URI,
+      environment: config.environment!,
+      clock: () => new Date(),
+      resolveTenant: repositories.tenantBindings.resolveTenant,
+    });
+  }
+  if (mode === "consumer" && !oauthApi && config.sessionHashKey) {
+    const repositories = getAuthRepositories();
+    oauthApi = createConsumerOAuthApi({
+      clientStore: repositories.oauthClients,
+      authorizationStore: repositories.oauthAuthorizations,
+      challengeStore: repositories.authChallenges,
+      admissionStore: repositories.oauthAdmission,
+      serverSecret: config.sessionHashKey,
+      audience: AGENTPAY_CONSUMER_URI,
+      environment: config.environment!,
+      clock: () => new Date(),
+      resolveOwner: repositories.tenantBindings.resolveOwner,
+      currentAuthenticationEpoch: repositories.tenantBindings.getAuthenticationEpoch,
+    });
   }
   if (mode === "consumer" && !consumerAuth) {
     throw new AgentPayAuthError("AUTH_PROVIDER_REQUIRED", "Consumer mode requires a session authenticator.");
@@ -275,6 +308,8 @@ export async function startAgentPayHttpServer(options: StartAgentPayHttpServerOp
       mode,
       consumerAuth,
       sessionApi,
+      oauthApi,
+      legacySiweSessionApiEnabled,
       createRuntime,
       mcpPath,
       healthPath,
@@ -335,6 +370,8 @@ interface HandleAgentPayHttpRequestOptions {
   mode: "public" | "consumer";
   consumerAuth?: ConsumerSessionAuthenticator;
   sessionApi?: ConsumerSessionApi;
+  oauthApi?: ConsumerOAuthApi;
+  legacySiweSessionApiEnabled: boolean;
   createRuntime: (config: AgentPayRuntimeConfig, tenantContext?: SessionContext) => AgentPayRuntime;
   mcpPath: string;
   healthPath: string;
@@ -390,7 +427,53 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
     return;
   }
 
-  if (options.mode === "consumer" && options.sessionApi && pathname.startsWith("/auth/siwe/")) {
+  if (options.mode === "consumer" && options.oauthApi && isConsumerOAuthPath(pathname)) {
+    if (requestContentLengthExceeds(options.request, 16_384)) {
+      writeJson(options.response, 413, { error: "Request body too large." }, { "cache-control": "no-store" });
+      return;
+    }
+    const headers = toWebHeaders(options.request.headers);
+    headers.set("x-agentpay-oauth-client", consumerOAuthRateLimitKey(options.request));
+    const preflightRequest = new Request(createRequestUrl(options.request), {
+      method: options.request.method,
+      headers,
+    });
+    if (options.oauthApi.preflight) {
+      try {
+        const preflightResponse = await options.oauthApi.preflight(preflightRequest);
+        if (preflightResponse) {
+          options.response.writeHead(preflightResponse.status, Object.fromEntries(preflightResponse.headers.entries()));
+          options.response.end(Buffer.from(await preflightResponse.arrayBuffer()));
+          return;
+        }
+      } catch {
+        writeJson(options.response, 503, { error: "Authorization service unavailable." }, { "cache-control": "no-store" });
+        return;
+      }
+    }
+    let body: Buffer;
+    try {
+      body = await readRequestBody(options.request, 16_384);
+    } catch {
+      writeJson(options.response, 413, { error: "Request body too large." }, { "cache-control": "no-store" });
+      return;
+    }
+    const oauthRequest = new Request(createRequestUrl(options.request), {
+      method: options.request.method,
+      headers,
+      body: body.length > 0 ? new Uint8Array(body) : undefined,
+    });
+    try {
+      const oauthResponse = await options.oauthApi.handle(oauthRequest, { admitted: Boolean(options.oauthApi.preflight) });
+      options.response.writeHead(oauthResponse.status, Object.fromEntries(oauthResponse.headers.entries()));
+      options.response.end(Buffer.from(await oauthResponse.arrayBuffer()));
+    } catch {
+      writeJson(options.response, 503, { error: "Authorization service unavailable." }, { "cache-control": "no-store" });
+    }
+    return;
+  }
+
+  if (options.mode === "consumer" && options.legacySiweSessionApiEnabled && options.sessionApi && pathname.startsWith("/auth/siwe/")) {
     let body: Buffer;
     try {
       body = await readRequestBody(options.request);
@@ -445,8 +528,13 @@ async function handleAgentPayHttpRequest(options: HandleAgentPayHttpRequestOptio
         throw new AgentPayAuthError("AUTH_CONTEXT_INVALID", "Consumer session context does not match this endpoint.");
       }
       requestRuntime = options.createRuntime(options.config, tenantContext);
-    } catch (error) {
-      writeJson(options.response, 401, { error: "Consumer authentication required." });
+    } catch {
+      writeJson(options.response, 401, { error: "Consumer authentication required." }, {
+        "cache-control": "no-store",
+        "www-authenticate": options.oauthApi
+          ? `Bearer resource_metadata="${consumerAuthorizationServer}${consumerResourceMetadataPath}"`
+          : "Bearer",
+      });
       return;
     }
   }
@@ -1198,10 +1286,9 @@ function isGenericPaymentProbe(request: IncomingMessage): boolean {
   return !accept.toLowerCase().includes("text/event-stream");
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
+async function readRequestBody(request: IncomingMessage, maxBodyBytes = 1_048_576): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
-  const maxBodyBytes = 1_048_576;
 
   for await (const chunk of request) {
     const buffer = toBuffer(chunk);
@@ -1213,6 +1300,13 @@ async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   }
 
   return Buffer.concat(chunks);
+}
+
+function requestContentLengthExceeds(request: IncomingMessage, maxBodyBytes: number): boolean {
+  const header = request.headers["content-length"];
+  const value = Array.isArray(header) ? header[0] : header;
+  const length = Number(value ?? "0");
+  return Number.isFinite(length) && length > maxBodyBytes;
 }
 
 function createReplayableRequest(request: IncomingMessage, body: Buffer, stripAuthorization = false): IncomingMessage {
@@ -1487,16 +1581,21 @@ function createStatelessTransport(): StreamableHTTPServerTransport {
 
 function setCorsHeaders(response: ServerResponse, mode: "public" | "consumer"): void {
   response.setHeader("access-control-allow-origin", mode === "consumer" ? "https://wallet.agentpay.site" : "*");
-  response.setHeader("access-control-allow-methods", "POST, OPTIONS");
+  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
     "content-type, authorization, mcp-session-id, mcp-protocol-version, payment-signature, PAYMENT-SIGNATURE",
   );
-  response.setHeader("access-control-expose-headers", "PAYMENT-REQUIRED, PAYMENT-RESPONSE");
+  response.setHeader("access-control-expose-headers", "PAYMENT-REQUIRED, PAYMENT-RESPONSE, WWW-Authenticate");
 }
 
-function writeJson(response: ServerResponse, statusCode: number, body: unknown): void {
-  response.writeHead(statusCode, { "content-type": "application/json" });
+function writeJson(
+  response: ServerResponse,
+  statusCode: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): void {
+  response.writeHead(statusCode, { "content-type": "application/json", ...headers });
   response.end(`${JSON.stringify(body)}\n`);
 }
 
@@ -1508,6 +1607,30 @@ function getRequestPathname(request: IncomingMessage): string {
 function getRequestQuery(request: IncomingMessage): string {
   const host = request.headers.host ?? "127.0.0.1";
   return new URL(request.url ?? "/", `http://${host}`).search;
+}
+
+function consumerOAuthRateLimitKey(request: IncomingMessage): string {
+  const remoteAddress = normalizeClientAddress(request.socket.remoteAddress ?? "unknown");
+  const realIp = request.headers["x-real-ip"];
+  const trustedProxyAddress = Array.isArray(realIp) ? realIp[0] : realIp;
+  if (isLoopbackAddress(remoteAddress) && trustedProxyAddress && isIP(trustedProxyAddress.trim()) > 0) {
+    return normalizeClientAddress(trustedProxyAddress.trim());
+  }
+  return remoteAddress;
+}
+
+function normalizeClientAddress(address: string): string {
+  return address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
+}
+
+function isLoopbackAddress(address: string): boolean {
+  return address === "127.0.0.1" || address === "::1";
+}
+
+function isConsumerOAuthPath(pathname: string): boolean {
+  return pathname === consumerResourceMetadataPath ||
+    pathname === consumerAuthorizationMetadataPath ||
+    pathname.startsWith("/oauth/");
 }
 
 function createPaymentRequestContext(request: IncomingMessage, path: string): HTTPRequestContext {
@@ -2071,6 +2194,10 @@ async function loadManifestCanaryPolicy(path: string | undefined): Promise<Canar
 
 function normalizePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+function isEnabledFlag(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
 }
 
 async function closeServer(server: Server): Promise<void> {

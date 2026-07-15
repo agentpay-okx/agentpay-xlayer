@@ -8,6 +8,8 @@
   "files": [
     "README.md",
     "src/auth/consumer-session-api.ts",
+    "src/auth/oauth.ts",
+    "src/auth/oauth-api.ts",
     "src/auth/siwe.ts",
     "src/auth/session.ts",
     "src/index.ts",

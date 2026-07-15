@@ -27,6 +27,13 @@ import type {
   ServiceSessionRecord,
   ServiceSessionStore,
 } from "../auth/session.ts";
+import type {
+  OAuthAuthorizationRecord,
+  OAuthAuthorizationStore,
+  OAuthAdmissionStore,
+  OAuthClientRecord,
+  OAuthClientStore,
+} from "../auth/oauth.ts";
 import { SERVICE_SESSION_TTL_SECONDS, type SiweChallenge } from "../auth/siwe.ts";
 import type { RuntimeEnvironmentIdentity } from "../runtime/production-readiness.ts";
 import { CanaryPolicyError, decimalToAtomic6 } from "../runtime/paid-execution-canary.ts";
@@ -105,6 +112,8 @@ export interface AgentPaySupabaseClient extends SupabaseRpcClient {
   from(table: "payment_events"): SupabaseInsertQuery & SupabaseSelectQuery<PaymentEventRow>;
   from(table: "auth_challenges"): SupabaseInsertQuery & SupabaseSelectQuery<AuthChallengeRow> & SupabaseUpdateQuery<AuthChallengeRow>;
   from(table: "service_sessions"): SupabaseInsertQuery & SupabaseSelectQuery<ServiceSessionRow> & SupabaseUpdateQuery<ServiceSessionRow>;
+  from(table: "oauth_clients"): SupabaseInsertQuery & SupabaseSelectQuery<OAuthClientRow> & SupabaseUpdateQuery<OAuthClientRow>;
+  from(table: "oauth_authorizations"): SupabaseInsertQuery & SupabaseSelectQuery<OAuthAuthorizationRow> & SupabaseUpdateQuery<OAuthAuthorizationRow>;
   from(table: "verified_owner_identities"): SupabaseInsertQuery & SupabaseSelectQuery<VerifiedOwnerIdentityRow>;
   from(table: "tenants"): SupabaseInsertQuery & SupabaseSelectQuery<TenantRow>;
   from(table: "agent_wallets"): SupabaseInsertQuery & SupabaseSelectQuery<AgentWalletRow> & SupabaseUpdateQuery<AgentWalletRow>;
@@ -228,10 +237,12 @@ interface AuthChallengeRow {
   account_address: string;
   chain_id: 196 | 1952;
   nonce: string;
+  flow?: "legacy_session" | "oauth_authorization";
   scopes: string[];
   message: string;
   issued_at: string;
   expires_at: string;
+  session_lifetime_seconds?: number;
   consumed_at: string | null;
 }
 
@@ -250,6 +261,38 @@ interface ServiceSessionRow {
   expires_at: string;
   last_used_at: string;
   revoked_at: string | null;
+}
+
+interface OAuthClientRow {
+  client_id: string;
+  client_name: string | null;
+  redirect_uris: string[];
+  created_at: string;
+  last_used_at: string;
+  revoked_at: string | null;
+}
+
+interface OAuthAuthorizationRow {
+  authorization_id: string;
+  client_id: string;
+  redirect_uri: string;
+  state_digest: string;
+  code_challenge: string;
+  resource: string;
+  scopes: string[];
+  issued_at: string;
+  expires_at: string;
+  siwe_challenge_id: string | null;
+  tenant_id: string | null;
+  owner_address: string | null;
+  account_address: string | null;
+  home_chain_id: number | null;
+  environment: "staging" | "production" | null;
+  authentication_epoch: number | null;
+  code_digest: string | null;
+  code_issued_at: string | null;
+  code_expires_at: string | null;
+  consumed_at: string | null;
 }
 
 interface RuntimeEnvironmentIdentityRow {
@@ -430,8 +473,19 @@ export type AgentPayRepositoryBundle = {
   canaryLedger?: CanaryLedgerStore;
   authChallenges: AuthChallengeStore;
   serviceSessions: ServiceSessionStore;
+  oauthClients: OAuthClientStore;
+  oauthAuthorizations: OAuthAuthorizationStore;
+  oauthAdmission: OAuthAdmissionStore;
   tenantBindings: {
     resolveTenant(ownerAddress: string, accountAddress: string, chainId: number, environment?: SessionEnvironment): Promise<ResolvedTenantBinding>;
+    resolveOwner(ownerAddress: string, chainId: number, environment: SessionEnvironment): Promise<{
+      tenantId: string;
+      ownerAddress: string;
+      accountAddress: string;
+      homeChainId: number;
+      authenticationEpoch: number;
+      environment: SessionEnvironment;
+    }>;
     getAuthenticationEpoch(tenantId: string): Promise<number>;
     getTenantState(tenantId: string): Promise<{
       authenticationEpoch: number;
@@ -893,6 +947,176 @@ function createRepositoryBundle(client: AgentPaySupabaseClient, tenantContext?: 
         }
       },
     },
+    oauthClients: {
+      async create(record: OAuthClientRecord): Promise<void> {
+        assertOAuthServerAuthority(tenantContext);
+        const { error } = await client.from("oauth_clients").insert(toOAuthClientRow(record));
+        if (error) {
+          throw new Error(`Failed to create OAuth client ${record.clientId}: ${error.message}`);
+        }
+      },
+      async get(clientId: string): Promise<OAuthClientRecord | null> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client.from("oauth_clients").select("*").eq("client_id", clientId).maybeSingle();
+        if (error) {
+          throw new Error("Failed to load OAuth client.");
+        }
+        return data ? toOAuthClientRecord(data) : null;
+      },
+      async touch(clientId: string, usedAt: string): Promise<void> {
+        assertOAuthServerAuthority(tenantContext);
+        const { error } = await client
+          .from("oauth_clients")
+          .update({ last_used_at: usedAt })
+          .eq("client_id", clientId)
+          .is("revoked_at", null);
+        if (error) {
+          throw new Error("Failed to update OAuth client activity.");
+        }
+      },
+    },
+    oauthAuthorizations: {
+      async create(record: OAuthAuthorizationRecord): Promise<void> {
+        assertOAuthServerAuthority(tenantContext);
+        const { error } = await client.from("oauth_authorizations").insert(toOAuthAuthorizationRow(record));
+        if (error) {
+          throw new Error(`Failed to create OAuth authorization ${record.authorizationId}: ${error.message}`);
+        }
+      },
+      async get(authorizationId: string): Promise<OAuthAuthorizationRecord | null> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client
+          .from("oauth_authorizations")
+          .select("*")
+          .eq("authorization_id", authorizationId)
+          .maybeSingle();
+        if (error) {
+          throw new Error("Failed to load OAuth authorization.");
+        }
+        return data ? toOAuthAuthorizationRecord(data) : null;
+      },
+      async bindSiweChallenge(input): Promise<boolean> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client
+          .from("oauth_authorizations")
+          .update({ siwe_challenge_id: input.challengeId })
+          .eq("authorization_id", input.authorizationId)
+          .is("siwe_challenge_id", null)
+          .is("code_digest", null)
+          .gt("expires_at", input.at)
+          .select("authorization_id")
+          .maybeSingle();
+        if (error) {
+          throw new Error("Failed to bind OAuth SIWE challenge.");
+        }
+        return Boolean(data);
+      },
+      async issueAuthorizationCode(input): Promise<boolean> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client
+          .from("oauth_authorizations")
+          .update({
+            tenant_id: input.tenantId,
+            owner_address: input.ownerAddress.toLowerCase(),
+            account_address: input.accountAddress.toLowerCase(),
+            home_chain_id: input.homeChainId,
+            environment: input.environment,
+            authentication_epoch: input.authenticationEpoch,
+            code_digest: input.codeDigest,
+            code_issued_at: input.codeIssuedAt,
+            code_expires_at: input.codeExpiresAt,
+          })
+          .eq("authorization_id", input.authorizationId)
+          .eq("siwe_challenge_id", input.challengeId)
+          .is("code_digest", null)
+          .gt("expires_at", input.codeIssuedAt)
+          .select("authorization_id")
+          .maybeSingle();
+        if (error) {
+          throw new Error("Failed to issue OAuth authorization code.");
+        }
+        return Boolean(data);
+      },
+      async findByCodeDigest(codeDigest: string): Promise<OAuthAuthorizationRecord | null> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client
+          .from("oauth_authorizations")
+          .select("*")
+          .eq("code_digest", codeDigest)
+          .maybeSingle();
+        if (error) {
+          throw new Error("Failed to load OAuth authorization code.");
+        }
+        return data ? toOAuthAuthorizationRecord(data) : null;
+      },
+      async consumeAuthorizationCode(input): Promise<OAuthAuthorizationRecord | null> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client
+          .from("oauth_authorizations")
+          .update({ consumed_at: input.consumedAt })
+          .eq("authorization_id", input.authorizationId)
+          .eq("code_digest", input.codeDigest)
+          .is("consumed_at", null)
+          .gt("code_expires_at", input.consumedAt)
+          .select("*")
+          .maybeSingle();
+        if (error) {
+          throw new Error("Failed to consume OAuth authorization code.");
+        }
+        return data ? toOAuthAuthorizationRecord(data) : null;
+      },
+      async exchangeAuthorizationCode(input): Promise<OAuthAuthorizationRecord | null> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client.rpc<OAuthAuthorizationRow[]>("exchange_oauth_authorization_code", {
+          p_authorization_id: input.authorizationId,
+          p_code_digest: input.codeDigest,
+          p_consumed_at: input.consumedAt,
+          p_session_id: input.session.sessionId,
+          p_session_tenant_id: input.session.tenantId,
+          p_session_owner_address: input.session.ownerAddress.toLowerCase(),
+          p_session_account_address: input.session.accountAddress.toLowerCase(),
+          p_session_home_chain_id: input.session.homeChainId,
+          p_session_audience: input.session.audience,
+          p_session_environment: input.session.environment,
+          p_session_scopes: [...input.session.scopes],
+          p_session_authentication_epoch: input.session.authenticationEpoch,
+          p_session_credential_digest: input.session.credentialDigest,
+          p_session_issued_at: input.session.issuedAt,
+          p_session_expires_at: input.session.expiresAt,
+          p_session_last_used_at: input.session.lastUsedAt,
+        });
+        if (error) {
+          throw new Error("Failed to atomically exchange OAuth authorization code.");
+        }
+        const row = Array.isArray(data) ? data[0] : null;
+        return row ? toOAuthAuthorizationRecord(row) : null;
+      },
+    },
+    oauthAdmission: {
+      async consume(input): Promise<boolean> {
+        assertOAuthServerAuthority(tenantContext);
+        const { data, error } = await client.rpc<boolean>("consume_oauth_admission", {
+          p_bucket: input.bucket,
+          p_key_digest: input.keyDigest,
+          p_now: input.now.toISOString(),
+          p_window_seconds: input.windowSeconds,
+          p_limit: input.limit,
+        });
+        if (error) {
+          throw new Error("Failed to consume OAuth admission quota.");
+        }
+        return data === true;
+      },
+      async pruneExpired(now): Promise<void> {
+        assertOAuthServerAuthority(tenantContext);
+        const { error } = await client.rpc<null>("prune_oauth_authorization_data", {
+          p_now: now.toISOString(),
+        });
+        if (error) {
+          throw new Error("Failed to prune expired OAuth authorization data.");
+        }
+      },
+    },
     tenantBindings: {
       async resolveTenant(ownerAddress, accountAddress, chainId, environment): Promise<ResolvedTenantBinding> {
         const normalizedOwner = ownerAddress.toLowerCase();
@@ -927,6 +1151,42 @@ function createRepositoryBundle(client: AgentPaySupabaseClient, tenantContext?: 
 
         return {
           tenantId: identity.data.tenant_id,
+          authenticationEpoch: tenantState.authenticationEpoch,
+          environment: tenantState.environment,
+        };
+      },
+      async resolveOwner(ownerAddress, chainId, environment) {
+        assertOAuthServerAuthority(tenantContext);
+        const normalizedOwner = ownerAddress.toLowerCase();
+        const identity = await client
+          .from("verified_owner_identities")
+          .select("tenant_id, owner_address, status")
+          .eq("owner_address", normalizedOwner)
+          .eq("status", "VERIFIED")
+          .maybeSingle();
+        if (identity.error || !identity.data) {
+          throw new AgentPayAuthError("TENANT_BINDING_REQUIRED", "Owner identity is not verified for AgentPay.");
+        }
+        const tenantState = await getTenantState(client, identity.data.tenant_id);
+        if (tenantState.status !== "ACTIVE" || tenantState.environment !== environment) {
+          throw new AgentPayAuthError("AUTH_ENVIRONMENT_MISMATCH", "Consumer tenant is not active for this environment.");
+        }
+        const wallet = await client
+          .from("agent_wallets")
+          .select("account_address, owner_address, home_chain_id, status")
+          .eq("tenant_id", identity.data.tenant_id)
+          .eq("owner_address", normalizedOwner)
+          .eq("home_chain_id", chainId)
+          .eq("status", "ACTIVE")
+          .maybeSingle();
+        if (wallet.error || !wallet.data) {
+          throw new AgentPayAuthError("TENANT_ACCOUNT_MISMATCH", "AgentPay account is not bound to the verified owner.");
+        }
+        return {
+          tenantId: identity.data.tenant_id,
+          ownerAddress: normalizedOwner,
+          accountAddress: wallet.data.account_address.toLowerCase(),
+          homeChainId: wallet.data.home_chain_id,
           authenticationEpoch: tenantState.authenticationEpoch,
           environment: tenantState.environment,
         };
@@ -2120,6 +2380,12 @@ function assertTenantId(tenantContext: SessionContext | undefined, tenantId: str
   }
 }
 
+function assertOAuthServerAuthority(tenantContext: SessionContext | undefined): void {
+  if (tenantContext) {
+    throw new AgentPayAuthError("AUTH_SERVER_CONTEXT_REQUIRED", "OAuth authorization storage is unavailable to tenant-scoped runtimes.");
+  }
+}
+
 function assertWalletOwnership(
   tenantContext: SessionContext | undefined,
   ownerAddress: string,
@@ -2146,10 +2412,12 @@ function toAuthChallengeRow(record: SiweChallenge): Record<string, unknown> {
     account_address: record.accountAddress.toLowerCase(),
     chain_id: record.chainId,
     nonce: record.nonce,
+    flow: record.flow,
     scopes: [...record.scopes],
     message: record.message,
     issued_at: record.issuedAt,
     expires_at: record.expiresAt,
+    session_lifetime_seconds: record.sessionLifetimeSeconds,
     consumed_at: record.consumedAt,
   });
 }
@@ -2164,11 +2432,12 @@ function toSiweChallenge(row: AuthChallengeRow): SiweChallenge {
     accountAddress: row.account_address,
     chainId: row.chain_id,
     nonce: row.nonce,
+    flow: row.flow ?? "legacy_session",
     scopes: Object.freeze([...row.scopes] as SiweChallenge["scopes"]),
     message: row.message,
     issuedAt: normalizeIsoTimestamp(row.issued_at),
     expiresAt: normalizeIsoTimestamp(row.expires_at),
-    sessionLifetimeSeconds: SERVICE_SESSION_TTL_SECONDS,
+    sessionLifetimeSeconds: row.session_lifetime_seconds ?? SERVICE_SESSION_TTL_SECONDS,
     consumedAt: row.consumed_at ?? undefined,
   });
 }
@@ -2217,6 +2486,89 @@ function toServiceSessionRecord(row: ServiceSessionRow): ServiceSessionRecord {
     lastUsedAt: row.last_used_at,
     revokedAt: row.revoked_at ?? undefined,
   });
+}
+
+function toOAuthClientRow(record: OAuthClientRecord): Record<string, unknown> {
+  return omitUndefined({
+    client_id: record.clientId,
+    client_name: record.clientName,
+    redirect_uris: [...record.redirectUris],
+    created_at: record.createdAt,
+    last_used_at: record.lastUsedAt ?? record.createdAt,
+    revoked_at: record.revokedAt,
+  });
+}
+
+function toOAuthClientRecord(row: OAuthClientRow): OAuthClientRecord {
+  return Object.freeze({
+    clientId: row.client_id,
+    ...(row.client_name ? { clientName: row.client_name } : {}),
+    redirectUris: Object.freeze([...row.redirect_uris]),
+    createdAt: normalizeOAuthTimestamp(row.created_at),
+    lastUsedAt: normalizeOAuthTimestamp(row.last_used_at),
+    ...(row.revoked_at ? { revokedAt: normalizeOAuthTimestamp(row.revoked_at) } : {}),
+  });
+}
+
+function toOAuthAuthorizationRow(record: OAuthAuthorizationRecord): Record<string, unknown> {
+  return omitUndefined({
+    authorization_id: record.authorizationId,
+    client_id: record.clientId,
+    redirect_uri: record.redirectUri,
+    state_digest: record.stateDigest,
+    code_challenge: record.codeChallenge,
+    resource: record.resource,
+    scopes: [...record.scopes],
+    issued_at: record.issuedAt,
+    expires_at: record.expiresAt,
+    siwe_challenge_id: record.siweChallengeId,
+    tenant_id: record.tenantId,
+    owner_address: record.ownerAddress?.toLowerCase(),
+    account_address: record.accountAddress?.toLowerCase(),
+    home_chain_id: record.homeChainId,
+    environment: record.environment,
+    authentication_epoch: record.authenticationEpoch,
+    code_digest: record.codeDigest,
+    code_issued_at: record.codeIssuedAt,
+    code_expires_at: record.codeExpiresAt,
+    consumed_at: record.consumedAt,
+  });
+}
+
+function toOAuthAuthorizationRecord(row: OAuthAuthorizationRow): OAuthAuthorizationRecord {
+  if (!Array.isArray(row.scopes) || row.scopes.length === 0) {
+    throw new AgentPayAuthError("OAUTH_SCOPE_INVALID", "OAuth authorization scopes are invalid.");
+  }
+  return Object.freeze({
+    authorizationId: row.authorization_id,
+    clientId: row.client_id,
+    redirectUri: row.redirect_uri,
+    stateDigest: row.state_digest,
+    codeChallenge: row.code_challenge,
+    resource: row.resource,
+    scopes: Object.freeze([...row.scopes] as OAuthAuthorizationRecord["scopes"]),
+    issuedAt: normalizeOAuthTimestamp(row.issued_at),
+    expiresAt: normalizeOAuthTimestamp(row.expires_at),
+    ...(row.siwe_challenge_id ? { siweChallengeId: row.siwe_challenge_id } : {}),
+    ...(row.tenant_id ? { tenantId: row.tenant_id } : {}),
+    ...(row.owner_address ? { ownerAddress: row.owner_address.toLowerCase() } : {}),
+    ...(row.account_address ? { accountAddress: row.account_address.toLowerCase() } : {}),
+    ...(row.home_chain_id ? { homeChainId: row.home_chain_id } : {}),
+    ...(row.environment ? { environment: row.environment } : {}),
+    ...(row.authentication_epoch !== null ? { authenticationEpoch: row.authentication_epoch } : {}),
+    ...(row.code_digest ? { codeDigest: row.code_digest } : {}),
+    ...(row.code_issued_at ? { codeIssuedAt: normalizeOAuthTimestamp(row.code_issued_at) } : {}),
+    ...(row.code_expires_at ? { codeExpiresAt: normalizeOAuthTimestamp(row.code_expires_at) } : {}),
+    ...(row.consumed_at ? { consumedAt: normalizeOAuthTimestamp(row.consumed_at) } : {}),
+  });
+}
+
+function normalizeOAuthTimestamp(value: string): string {
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) {
+    throw new AgentPayAuthError("OAUTH_TIMESTAMP_INVALID", "OAuth timestamp is invalid.");
+  }
+  return timestamp.toISOString();
 }
 
 async function getTenantState(
