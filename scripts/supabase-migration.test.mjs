@@ -228,6 +228,8 @@ describe("AgentPay Supabase migration", () => {
     assert.ok(sql.includes("create or replace function public.prune_oauth_authorization_data"));
     assert.ok(sql.includes("delete from public.oauth_authorizations"));
     assert.ok(sql.includes("delete from public.oauth_clients as client"));
+    assert.ok(sql.includes("from public.oauth_authorizations as authorization_record"), "non-reserved authorization cleanup alias");
+    assert.ok(!sql.includes("as authorization where"), "reserved authorization is never used as a SQL alias");
     assert.ok(sql.includes("alter table public.oauth_rate_limit_buckets enable row level security"));
     assert.ok(sql.includes("create or replace function public.exchange_oauth_authorization_code"));
     assert.ok(sql.includes("insert into public.service_sessions"));

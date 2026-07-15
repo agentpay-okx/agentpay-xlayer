@@ -187,8 +187,8 @@ begin
   where client.last_used_at <= p_now - interval '90 days'
     and not exists (
       select 1
-      from public.oauth_authorizations as authorization
-      where authorization.client_id = client.client_id
+      from public.oauth_authorizations as authorization_record
+      where authorization_record.client_id = client.client_id
     );
 end;
 $$;
