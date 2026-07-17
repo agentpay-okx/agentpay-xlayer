@@ -22,9 +22,9 @@ const expectedPackageNames = new Map([
 const expectedVersions = new Map([
   ["@agentpay-ai/shared", "0.1.4"],
   ["@agentpay-ai/mcp-server", "0.1.13"],
-  ["@agentpay-ai/setup-web", "0.1.14"],
+  ["@agentpay-ai/setup-web", "0.1.15"],
   ["@agentpay-ai/skill", "0.1.7"],
-  ["@agentpay-ai/agentpay", "0.1.19"],
+  ["@agentpay-ai/agentpay", "0.1.20"],
 ]);
 
 async function readPackageJson(packageDir) {
