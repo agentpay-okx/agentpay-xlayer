@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import {
   AgentPayAuthError,
+  MAINNET_ONBOARDING_URL,
   type SessionEnvironment,
   type SessionScope,
 } from "@agentpay-ai/shared";
@@ -267,6 +268,7 @@ async function handleAuthorize(url: URL, dependencies: ConsumerOAuthApiDependenc
         redirectHost: new URL(redirectUri).host,
         scopes,
         expectedChainId: dependencies.environment === "production" ? 196 : 1952,
+        setupUrl: dependencies.environment === "production" ? MAINNET_ONBOARDING_URL : undefined,
         cspNonce,
       }),
       {
@@ -292,7 +294,14 @@ async function handleSiweChallenge(request: Request, dependencies: ConsumerOAuth
       return oauthError("invalid_request");
     }
 
-    const binding = await dependencies.resolveOwner(ownerAddress, chainId, dependencies.environment);
+    let binding: OAuthOwnerBinding;
+    try {
+      binding = await dependencies.resolveOwner(ownerAddress, chainId, dependencies.environment);
+    } catch (error) {
+      const setupRequired = productionSetupRequiredResponse(error, dependencies.environment, ownerAddress, chainId);
+      if (setupRequired) return setupRequired;
+      throw error;
+    }
     if (
       binding.environment !== dependencies.environment ||
       binding.homeChainId !== chainId ||
@@ -686,6 +695,26 @@ function oauthError(error: "invalid_client_metadata" | "invalid_request" | "inva
   return jsonResponse({ error }, error === "temporarily_unavailable" ? 503 : 400);
 }
 
+function productionSetupRequiredResponse(
+  error: unknown,
+  environment: SessionEnvironment,
+  ownerAddress: string,
+  chainId: 196 | 1952,
+): Response | null {
+  if (
+    environment !== "production" ||
+    chainId !== 196 ||
+    !(error instanceof AgentPayAuthError) ||
+    !new Set(["TENANT_BINDING_REQUIRED", "TENANT_ACCOUNT_MISMATCH"]).has(error.code)
+  ) return null;
+  return jsonResponse({
+    error: "AGENTPAY_SETUP_REQUIRED",
+    setupUrl: MAINNET_ONBOARDING_URL,
+    ownerAddress,
+    chainId: 196,
+  }, 409);
+}
+
 function oauthAdmissionPolicy(pathname: string): { bucket: OAuthAdmissionBucket; windowSeconds: number; limit: number } | null {
   if (pathname === "/oauth/register") return { bucket: "registration", windowSeconds: 60 * 60, limit: 20 };
   if (pathname === "/oauth/authorize") return { bucket: "authorization", windowSeconds: 60, limit: 20 };
@@ -708,9 +737,14 @@ function renderConsentPage(input: {
   redirectHost: string;
   scopes: readonly SessionScope[];
   expectedChainId: number;
+  setupUrl?: typeof MAINNET_ONBOARDING_URL;
   cspNonce: string;
 }): string {
-  const safeConfig = JSON.stringify({ authorizationId: input.authorizationId, expectedChainId: input.expectedChainId }).replace(/</g, "\\u003c");
+  const safeConfig = JSON.stringify({
+    authorizationId: input.authorizationId,
+    expectedChainId: input.expectedChainId,
+    ...(input.setupUrl ? { setupUrl: input.setupUrl } : {}),
+  }).replace(/</g, "\\u003c");
   const csp = consentContentSecurityPolicy(input.cspNonce);
   return `<!doctype html>
 <html lang="en">
@@ -724,7 +758,8 @@ function renderConsentPage(input: {
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111827; color: #f8fafc; }
       main { width: min(34rem, calc(100vw - 2rem)); padding: 2rem; border: 1px solid #475569; border-radius: 1rem; background: #172033; }
       h1 { margin-top: 0; font-size: 1.55rem; } p, li { line-height: 1.5; color: #cbd5e1; }
-      code { overflow-wrap: anywhere; } button { width: 100%; margin-top: 1rem; padding: .8rem 1rem; border: 0; border-radius: .6rem; font: inherit; font-weight: 700; color: #0f172a; background: #67e8f9; cursor: pointer; }
+      code { overflow-wrap: anywhere; } button, .setup-link { width: 100%; margin-top: 1rem; padding: .8rem 1rem; border: 0; border-radius: .6rem; font: inherit; font-weight: 700; color: #0f172a; background: #67e8f9; cursor: pointer; }
+      .setup-link { display: block; box-sizing: border-box; text-align: center; text-decoration: none; background: #a7f3d0; } [hidden] { display: none; }
       button:disabled { cursor: wait; opacity: .65; } #status { min-height: 1.5rem; color: #fca5a5; }
     </style>
   </head>
@@ -736,17 +771,20 @@ function renderConsentPage(input: {
       <ul>${input.scopes.map((scope) => `<li>${escapeHtml(scope)}</li>`).join("")}</ul>
       <p>Signing proves wallet ownership for this MCP session. It does not approve a payment, transfer, or contract call.</p>
       <button id="authorize" type="button">Connect wallet and authorize</button>
+      ${input.setupUrl ? `<a id="setup-link" class="setup-link" href="${escapeHtml(input.setupUrl)}" target="_blank" rel="noopener noreferrer" hidden>Create AgentPay wallet</a>` : ""}
       <p id="status" role="status"></p>
     </main>
     <script nonce="${escapeHtml(input.cspNonce)}">
       const config = ${safeConfig};
       const button = document.getElementById("authorize");
+      const setupLink = document.getElementById("setup-link");
       const status = document.getElementById("status");
       const setStatus = (message) => { status.textContent = message; };
       button.addEventListener("click", async () => {
         try {
           if (!window.ethereum || typeof window.ethereum.request !== "function") throw new Error("An EIP-1193 wallet is required.");
           button.disabled = true;
+          if (setupLink) setupLink.hidden = true;
           setStatus("Connecting wallet…");
           const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
           const ownerAddress = Array.isArray(accounts) ? accounts[0] : undefined;
@@ -760,8 +798,15 @@ function renderConsentPage(input: {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ authorizationId: config.authorizationId, ownerAddress, chainId }),
           });
-          if (!challengeResponse.ok) throw new Error("Unable to prepare the ownership proof.");
           const challenge = await challengeResponse.json();
+          if (challengeResponse.status === 409 && challenge.error === "AGENTPAY_SETUP_REQUIRED" && config.setupUrl) {
+            setupLink.hidden = false;
+            button.textContent = "Retry authorization";
+            button.disabled = false;
+            setStatus("Create your AgentPay wallet, then return here and retry authorization.");
+            return;
+          }
+          if (!challengeResponse.ok) throw new Error("Unable to prepare the ownership proof.");
           setStatus("Waiting for wallet signature…");
           const signature = await window.ethereum.request({ method: "personal_sign", params: [challenge.message, ownerAddress] });
           const verifyResponse = await fetch("/oauth/siwe/verify", {

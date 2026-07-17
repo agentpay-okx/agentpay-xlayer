@@ -9,7 +9,7 @@ import { Wallet } from "ethers";
 import type { PaymentPayload, PaymentRequirements } from "@okxweb3/x402-core/types";
 import { describe, it } from "node:test";
 
-import { createSessionContext, type SessionContext } from "@agentpay-ai/shared";
+import { MAINNET_ONBOARDING_URL, createSessionContext, type SessionContext } from "@agentpay-ai/shared";
 import { createConsumerOAuthApi } from "../auth/oauth-api.ts";
 import type {
   OAuthAuthorizationRecord,
@@ -1396,6 +1396,46 @@ describe("startAgentPayHttpServer", () => {
       assert.equal(response.status, 201);
       assert.deepEqual(await response.json(), { client_id: "client_test" });
       assert.deepEqual(paths, ["preflight:/oauth/register", "/oauth/register"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("preserves the fixed production setup-required OAuth handoff through the HTTP boundary", async () => {
+    const server = await startAgentPayHttpServer({
+      env: { ...mcpEnv(), AGENTPAY_ENVIRONMENT: "staging" },
+      hostname: "127.0.0.1",
+      port: 0,
+      mode: "consumer",
+      consumerAuth: { async authenticate() { throw new Error("MCP auth must not run for OAuth routes."); } },
+      oauthApi: {
+        async preflight() { return undefined; },
+        async handle(request) {
+          assert.equal(new URL(request.url).pathname, "/oauth/siwe/challenge");
+          return Response.json({
+            error: "AGENTPAY_SETUP_REQUIRED",
+            setupUrl: MAINNET_ONBOARDING_URL,
+            ownerAddress: "0x1111111111111111111111111111111111111111",
+            chainId: 196,
+          }, { status: 409, headers: { "cache-control": "no-store" } });
+        },
+      },
+      createRuntime() { return createRuntime(); },
+    });
+
+    try {
+      const response = await fetch(new URL("/oauth/siwe/challenge", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), {
+        error: "AGENTPAY_SETUP_REQUIRED",
+        setupUrl: MAINNET_ONBOARDING_URL,
+        ownerAddress: "0x1111111111111111111111111111111111111111",
+        chainId: 196,
+      });
     } finally {
       await server.close();
     }

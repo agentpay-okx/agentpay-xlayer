@@ -3,7 +3,12 @@ import { Wallet } from "ethers";
 import { describe, it } from "node:test";
 import { startAuthorization } from "@modelcontextprotocol/sdk/client/auth.js";
 
-import type { SessionEnvironment, SessionScope } from "@agentpay-ai/shared";
+import {
+  AgentPayAuthError,
+  MAINNET_ONBOARDING_URL,
+  type SessionEnvironment,
+  type SessionScope,
+} from "@agentpay-ai/shared";
 
 import {
   type OAuthAuthorizationRecord,
@@ -238,6 +243,101 @@ function formRequest(path: string, fields: Record<string, string>): Request {
 }
 
 describe("consumer OAuth authorization API", () => {
+  it("returns only the fixed mainnet setup handoff when a production owner binding is missing", async () => {
+    for (const code of ["TENANT_BINDING_REQUIRED", "TENANT_ACCOUNT_MISMATCH"]) {
+      const deps = dependencies({
+        environment: "production",
+        resolveOwner: async () => {
+          throw new AgentPayAuthError(code, "sensitive repository detail");
+        },
+      });
+      const api = createConsumerOAuthApi(deps);
+      await (deps.clientStore as ClientStore).create({
+        clientId: "client_123",
+        redirectUris: [redirectUri],
+        createdAt: "2026-07-12T00:00:00.000Z",
+      });
+      const authorize = await api.handle(new Request(
+        `https://wallet.agentpay.site/oauth/authorize?response_type=code&client_id=client_123&redirect_uri=${encodeURIComponent(redirectUri)}&state=setup-state&code_challenge=${codeChallenge}&code_challenge_method=S256&resource=${encodeURIComponent(resource)}`,
+      ));
+      const cookie = authorize.headers.get("set-cookie");
+      assert.ok(cookie);
+      const response = await api.handle(new Request("https://wallet.agentpay.site/oauth/siwe/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({
+          authorizationId: "authorization_123",
+          ownerAddress: owner.address,
+          chainId: 196,
+          setupUrl: "https://evil.example/setup",
+          redirectUri: "https://evil.example/callback",
+        }),
+      }));
+
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), {
+        error: "AGENTPAY_SETUP_REQUIRED",
+        setupUrl: MAINNET_ONBOARDING_URL,
+        ownerAddress: owner.address,
+        chainId: 196,
+      });
+      assert.equal((deps.challengeStore as ChallengeStore).records.size, 0);
+      assert.equal((await (deps.authorizationStore as AuthorizationStore).get("authorization_123"))?.siweChallengeId, undefined);
+    }
+  });
+
+  it("keeps setup-required repository errors generic outside production mainnet", async () => {
+    for (const environment of ["staging", "production"] as const) {
+      const deps = dependencies({
+        environment,
+        resolveOwner: async () => {
+          throw new AgentPayAuthError("TENANT_BINDING_REQUIRED", "sensitive repository detail");
+        },
+      });
+      const api = createConsumerOAuthApi(deps);
+      await (deps.clientStore as ClientStore).create({
+        clientId: "client_123",
+        redirectUris: [redirectUri],
+        createdAt: "2026-07-12T00:00:00.000Z",
+      });
+      const authorize = await api.handle(new Request(
+        `https://wallet.agentpay.site/oauth/authorize?response_type=code&client_id=client_123&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${codeChallenge}&code_challenge_method=S256&resource=${encodeURIComponent(resource)}`,
+      ));
+      const cookie = authorize.headers.get("set-cookie");
+      assert.ok(cookie);
+      const response = await api.handle(new Request("https://wallet.agentpay.site/oauth/siwe/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({
+          authorizationId: "authorization_123",
+          ownerAddress: owner.address,
+          chainId: environment === "production" ? 1952 : 196,
+        }),
+      }));
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: "invalid_request" });
+    }
+  });
+
+  it("renders a fixed setup link and retry action on the production consent page", async () => {
+    const deps = dependencies({ environment: "production" });
+    const api = createConsumerOAuthApi(deps);
+    await (deps.clientStore as ClientStore).create({
+      clientId: "client_123",
+      clientName: "AgentPay test client",
+      redirectUris: [redirectUri],
+      createdAt: "2026-07-12T00:00:00.000Z",
+    });
+    const response = await api.handle(new Request(
+      `https://wallet.agentpay.site/oauth/authorize?response_type=code&client_id=client_123&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${codeChallenge}&code_challenge_method=S256&resource=${encodeURIComponent(resource)}`,
+    ));
+    const html = await response.text();
+    assert.match(html, new RegExp(MAINNET_ONBOARDING_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(html, /Create AgentPay wallet/);
+    assert.match(html, /Retry authorization/);
+    assert.doesNotMatch(html, /setupUrl\s*=\s*challenge\./);
+  });
+
   it("dynamically registers a public client and rejects a non-loopback HTTP callback", async () => {
     const api = createConsumerOAuthApi(dependencies());
 
