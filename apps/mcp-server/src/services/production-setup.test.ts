@@ -12,6 +12,7 @@ const executor = "0x2222222222222222222222222222222222222222";
 const factory = "0x3333333333333333333333333333333333333333";
 const deployer = "0x4444444444444444444444444444444444444444";
 const predicted = "0x5555555555555555555555555555555555555555";
+const address = (digit: string) => `0x${digit.repeat(40)}`;
 const hash = (digit: string) => `0x${digit.repeat(64)}`;
 const bareHash = (digit: string) => digit.repeat(64);
 const signature = `0x${"12".repeat(65)}`;
@@ -61,6 +62,10 @@ async function admittedStores() {
   await stores.web.challenge(challenge());
   await stores.web.admit({ capabilityDigest: bareHash("a"), ownerSetupSignature: signature, at });
   return stores;
+}
+
+function hasCode(code: string) {
+  return (error: unknown) => error instanceof ProductionSetupStoreError && error.code === code;
 }
 
 describe("production setup in-memory stores", () => {
@@ -320,5 +325,264 @@ describe("production setup in-memory stores", () => {
       "8",
     );
     assert.equal(nextDay.disposition, "RESERVED");
+  });
+
+  it("fails closed for invalid policy, challenge, admission, claim, and lookup inputs", async () => {
+    const policy = {
+      deployerAddress: deployer,
+      maxDeploymentsPerDay: 10,
+      maxGasPerDeployment: 5_000_000n,
+      maxNativeCostPerDayWei: 1_000_000_000_000_000_000n,
+      maxPending: 4,
+    } as const;
+    const invalidPolicies = [
+      { ...policy, maxDeploymentsPerDay: 0 },
+      { ...policy, maxDeploymentsPerDay: 1.5 },
+      { ...policy, maxPending: 0 },
+      { ...policy, maxPending: 1.5 },
+      { ...policy, maxGasPerDeployment: 0n },
+      { ...policy, maxNativeCostPerDayWei: 0n },
+    ];
+    for (const sponsorPolicy of invalidPolicies) {
+      assert.throws(
+        () => createInMemoryProductionSetupStores({ sponsorPolicy }),
+        hasCode("SETUP_SPONSOR_POLICY_INVALID"),
+      );
+    }
+
+    const invalidChallenges: ProductionSetupChallengeInput[] = [
+      challenge({ homeChainId: 195 as 196 }),
+      challenge({ setupIntentId: "short" }),
+      challenge({ messageToSign: "" }),
+      challenge({ capabilityDigest: "bad" }),
+      challenge({ at: "not-a-date" }),
+      challenge({ expiresAt: at }),
+      challenge({ ownerAddress: "not-an-address" }),
+      challenge({ executorAddress: owner }),
+      challenge({ deploymentNonce: "0x01" }),
+      challenge({ predictedAccount: "not-an-address" }),
+    ];
+    for (const input of invalidChallenges) {
+      const stores = createStores();
+      await assert.rejects(
+        stores.web.challenge(input),
+        hasCode(input.executorAddress === owner ? "SETUP_ACTOR_COLLISION" : "SETUP_INPUT_INVALID"),
+      );
+    }
+
+    const stores = createStores();
+    await stores.web.challenge(challenge());
+    const conflicts: Array<Partial<ProductionSetupChallengeInput>> = [
+      { setupIntentId: "setup-production-memory-9999" },
+      { executorAddress: address("8") },
+      { messageToSign: "different typed data" },
+      { deploymentNonce: hash("8") },
+      { manifestSha256: hash("8") },
+      { factoryAddress: address("8") },
+      { factoryRuntimeCodeHash: hash("8") },
+      { deploymentSalt: hash("8") },
+      { predictedAccount: address("8") },
+      { accountCreationCodeHash: hash("8") },
+      { accountRuntimeCodeHash: hash("8") },
+      { authorizationHash: hash("8") },
+      { expiresAt: "2026-07-17T05:14:59.000Z" },
+    ];
+    for (const overrides of conflicts) {
+      await assert.rejects(stores.web.challenge(challenge(overrides)), hasCode("SETUP_REPLAY_CONFLICT"));
+    }
+    await assert.rejects(
+      stores.web.challenge(challenge({
+        setupIntentId: "setup-production-memory-0002",
+        capabilityDigest: bareHash("b"),
+        deploymentNonce: hash("8"),
+      })),
+      hasCode("SETUP_OWNER_BUSY"),
+    );
+    await assert.rejects(
+      stores.web.challenge(challenge({
+        setupIntentId: "setup-production-memory-0003",
+        capabilityDigest: bareHash("c"),
+        ownerAddress: address("8"),
+      })),
+      hasCode("SETUP_DEPLOYMENT_NONCE_CONFLICT"),
+    );
+    await assert.rejects(
+      stores.web.admit({ capabilityDigest: bareHash("f"), ownerSetupSignature: signature, at }),
+      hasCode("SETUP_NOT_FOUND"),
+    );
+    await assert.rejects(
+      stores.web.admit({ capabilityDigest: bareHash("a"), ownerSetupSignature: "bad", at }),
+      hasCode("SETUP_INPUT_INVALID"),
+    );
+    const expiredStores = createStores();
+    await expiredStores.web.challenge(challenge());
+    await assert.rejects(
+      expiredStores.web.admit({
+        capabilityDigest: bareHash("a"),
+        ownerSetupSignature: signature,
+        at: "2026-07-17T05:15:00.000Z",
+      }),
+      hasCode("SETUP_EXPIRED"),
+    );
+    assert.equal(
+      (await expiredStores.web.status({
+        capabilityDigest: bareHash("a"),
+        at: "2026-07-17T05:15:00.000Z",
+      })).status,
+      "SETUP_EXPIRED",
+    );
+    assert.deepEqual(
+      await expiredStores.web.prune({ at: "2026-07-17T05:15:00.000Z" }),
+      { expiredSetups: 1, deletedRateBuckets: 0 },
+    );
+    assert.equal((await expiredStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 120 })), null);
+    await assert.rejects(
+      expiredStores.worker.claim({ workerId: "worker id", at, leaseSeconds: 120 }),
+      hasCode("SETUP_INPUT_INVALID"),
+    );
+    await assert.rejects(
+      expiredStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 14 }),
+      hasCode("SETUP_INPUT_INVALID"),
+    );
+    await assert.rejects(
+      expiredStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 901 }),
+      hasCode("SETUP_INPUT_INVALID"),
+    );
+  });
+
+  it("keeps every worker transition idempotent and rejects conflicting replays", async () => {
+    const stores = await admittedStores();
+    const claimed = await stores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 120 });
+    assert.ok(claimed);
+    const reservation = {
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      deployerAddress: deployer,
+      deployerNonce: "7",
+      gasLimit: "1000000",
+      nativeCostWei: "1000",
+      at,
+    } as const;
+    assert.equal((await stores.worker.reserve(reservation)).disposition, "RESERVED");
+    assert.equal((await stores.worker.reserve(reservation)).disposition, "REPLAY");
+    await assert.rejects(
+      stores.worker.reserve({ ...reservation, nativeCostWei: "1001" }),
+      hasCode("SETUP_BUDGET_CONFLICT"),
+    );
+
+    const encrypted = Object.freeze({ ciphertext: "ciphertext", iv: "iv", tag: "tag", hash: bareHash("b") });
+    const signedInput = {
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      rawTransaction: encrypted,
+      transactionHash: hash("8"),
+      at,
+    } as const;
+    assert.equal((await stores.worker.persistSignedTransaction(signedInput)).disposition, "SIGNED");
+    assert.equal((await stores.worker.persistSignedTransaction(signedInput)).disposition, "REPLAY");
+    await assert.rejects(
+      stores.worker.persistSignedTransaction({
+        ...signedInput,
+        rawTransaction: { ...encrypted, ciphertext: "different" },
+      }),
+      hasCode("SETUP_OUTBOX_CONFLICT"),
+    );
+
+    const broadcastInput = {
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      result: "BROADCAST" as const,
+      at,
+    };
+    assert.equal((await stores.worker.markBroadcastResult(broadcastInput)).disposition, "BROADCAST");
+    assert.equal((await stores.worker.markBroadcastResult(broadcastInput)).disposition, "REPLAY");
+    await assert.rejects(
+      stores.worker.recordReceipt({
+        jobId: claimed.jobId,
+        fencingToken: claimed.fencingToken,
+        transactionHash: hash("9"),
+        receiptStatus: 1,
+        receiptBlockNumber: "12345",
+        at,
+      }),
+      hasCode("SETUP_TRANSACTION_MISMATCH"),
+    );
+    const receiptInput = {
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      transactionHash: hash("8"),
+      receiptStatus: 1 as const,
+      receiptBlockNumber: "12345",
+      at,
+    };
+    assert.equal((await stores.worker.recordReceipt(receiptInput)).disposition, "RECORDED");
+    assert.equal((await stores.worker.recordReceipt(receiptInput)).disposition, "REPLAY");
+    assert.equal((await stores.worker.finalize({
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      at,
+    })).disposition, "COMPLETED");
+    assert.equal((await stores.worker.finalize({
+      jobId: claimed.jobId,
+      fencingToken: claimed.fencingToken,
+      at,
+    })).disposition, "REPLAY");
+  });
+
+  it("covers failed receipts, existing-account replay, and manual-review replay", async () => {
+    const failedStores = await admittedStores();
+    const failedClaim = await failedStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 120 });
+    assert.ok(failedClaim);
+    await failedStores.worker.reserve({
+      jobId: failedClaim.jobId, fencingToken: failedClaim.fencingToken, deployerAddress: deployer,
+      deployerNonce: "7", gasLimit: "1000000", nativeCostWei: "1000", at,
+    });
+    const encrypted = Object.freeze({ ciphertext: "ciphertext", iv: "iv", tag: "tag", hash: bareHash("b") });
+    await failedStores.worker.persistSignedTransaction({
+      jobId: failedClaim.jobId, fencingToken: failedClaim.fencingToken,
+      rawTransaction: encrypted, transactionHash: hash("8"), at,
+    });
+    await failedStores.worker.markBroadcastResult({
+      jobId: failedClaim.jobId, fencingToken: failedClaim.fencingToken, result: "BROADCAST_UNKNOWN",
+      publicCode: "SETUP_RPC_AMBIGUOUS", at,
+    });
+    const reverted = {
+      jobId: failedClaim.jobId, fencingToken: failedClaim.fencingToken,
+      transactionHash: hash("8"), receiptStatus: 0 as const, receiptBlockNumber: "12345", at,
+    };
+    assert.equal((await failedStores.worker.recordReceipt(reverted)).status, "FAILED");
+    assert.equal((await failedStores.worker.recordReceipt(reverted)).disposition, "REPLAY");
+    await assert.rejects(
+      failedStores.worker.finalize({ jobId: failedClaim.jobId, fencingToken: failedClaim.fencingToken, at }),
+      hasCode("SETUP_STATE_CONFLICT"),
+    );
+
+    const existingStores = await admittedStores();
+    const existingClaim = await existingStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 120 });
+    assert.ok(existingClaim);
+    const existingInput = {
+      jobId: existingClaim.jobId,
+      fencingToken: existingClaim.fencingToken,
+      verificationBlockNumber: "12345",
+      at,
+    };
+    assert.equal((await existingStores.worker.recordExistingAccount(existingInput)).disposition, "RECORDED");
+    assert.equal((await existingStores.worker.recordExistingAccount(existingInput)).disposition, "REPLAY");
+
+    const reviewStores = await admittedStores();
+    const reviewClaim = await reviewStores.worker.claim({ workerId: "worker-1", at, leaseSeconds: 120 });
+    assert.ok(reviewClaim);
+    const reviewInput = {
+      jobId: reviewClaim.jobId,
+      fencingToken: reviewClaim.fencingToken,
+      publicCode: "SETUP_RPC_AMBIGUOUS",
+      at,
+    };
+    assert.equal((await reviewStores.worker.markManualReview(reviewInput)).disposition, "MANUAL_REVIEW");
+    assert.equal((await reviewStores.worker.markManualReview(reviewInput)).disposition, "REPLAY");
+    await assert.rejects(
+      reviewStores.worker.markManualReview({ ...reviewInput, publicCode: "SETUP_DIFFERENT" }),
+      hasCode("SETUP_STATE_CONFLICT"),
+    );
   });
 });

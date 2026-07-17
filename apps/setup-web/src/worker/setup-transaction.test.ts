@@ -11,6 +11,7 @@ import {
   MAINNET_WALLET_SETUP_TYPES,
 } from "@agentpay-ai/shared";
 import {
+  buildSetupAuthorizationFromClaim,
   buildSetupDeploymentTransaction,
   decryptSetupRawTransaction,
   encryptSetupRawTransaction,
@@ -130,5 +131,67 @@ describe("setup deployment transaction", () => {
     assert.equal(decryptSetupRawTransaction(encrypted, Buffer.alloc(32, 7)), rawTransaction);
     assert.equal(keccak256(decryptSetupRawTransaction(encrypted, Buffer.alloc(32, 7))), keccak256(rawTransaction));
     assert.throws(() => decryptSetupRawTransaction({ ...encrypted, ciphertext: `${encrypted.ciphertext}00` }, Buffer.alloc(32, 7)));
+  });
+
+  it("fails closed for malformed authorization, transaction limits, and encrypted outbox envelopes", () => {
+    assert.throws(
+      () => buildSetupAuthorizationFromClaim(Object.freeze({ ...claim(), expiresAt: "not-a-date" })),
+      /SETUP_DEADLINE_INVALID/,
+    );
+    assert.throws(
+      () => buildSetupAuthorizationFromClaim(Object.freeze({ ...claim(), expiresAt: "1970-01-01T00:00:00.000Z" })),
+      /SETUP_DEADLINE_INVALID/,
+    );
+    assert.throws(
+      () => buildSetupAuthorizationFromClaim(Object.freeze({ ...claim(), expiresAt: "2026-07-17T05:15:00.001Z" })),
+      /SETUP_DEADLINE_INVALID/,
+    );
+    assert.throws(
+      () => buildSetupAuthorizationFromClaim(Object.freeze({ ...claim(), authorizationHash: hash("9") })),
+      /SETUP_AUTHORIZATION_HASH_MISMATCH/,
+    );
+    assert.throws(
+      () => buildSetupAuthorizationFromClaim(Object.freeze({ ...claim(), ownerSetupSignature: "0x12" })),
+      /SETUP_SIGNATURE_INVALID/,
+    );
+
+    const base = {
+      claim: claim(), deployerAddress: deployer, deployerNonce: 7n, gasLimit: 1_000_000n,
+      maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n,
+      limits: { maxGasLimit: 2_000_000n, maxFeePerGas: 3_000_000_000n,
+        maxPriorityFeePerGas: 2_000_000_000n, maxNativeCostWei: 3_000_000_000_000_000n },
+    } as const;
+    assert.throws(() => buildSetupDeploymentTransaction({ ...base, deployerAddress: "bad" }), /SETUP_DEPLOYER_INVALID/);
+    assert.throws(() => buildSetupDeploymentTransaction({
+      ...base, claim: Object.freeze({ ...claim(), executorAddress: "bad" }),
+    }), /SETUP_ACTOR_INVALID/);
+    assert.throws(() => buildSetupDeploymentTransaction({ ...base, deployerNonce: -1n }), /SETUP_NONCE_INVALID/);
+    assert.throws(
+      () => buildSetupDeploymentTransaction({ ...base, deployerNonce: BigInt(Number.MAX_SAFE_INTEGER) + 1n }),
+      /SETUP_NONCE_INVALID/,
+    );
+    assert.throws(() => buildSetupDeploymentTransaction({ ...base, gasLimit: 0n }), /SETUP_GAS_CAP/);
+    assert.throws(() => buildSetupDeploymentTransaction({ ...base, maxFeePerGas: 0n }), /SETUP_FEE_CAP/);
+    assert.throws(() => buildSetupDeploymentTransaction({ ...base, maxPriorityFeePerGas: 0n }), /SETUP_PRIORITY_FEE_CAP/);
+    assert.throws(() => buildSetupDeploymentTransaction({
+      ...base, maxFeePerGas: 1n, maxPriorityFeePerGas: 2n,
+    }), /SETUP_FEE_INVALID/);
+    for (const limits of [
+      { ...base.limits, maxGasLimit: 0n },
+      { ...base.limits, maxFeePerGas: 0n },
+      { ...base.limits, maxPriorityFeePerGas: 0n },
+      { ...base.limits, maxNativeCostWei: 0n },
+    ]) {
+      assert.throws(() => buildSetupDeploymentTransaction({ ...base, limits }), /SETUP_LIMITS_INVALID/);
+    }
+
+    assert.throws(() => encryptSetupRawTransaction("0x12", Buffer.alloc(31), Buffer.alloc(12)), /SETUP_ENCRYPTION_KEY_INVALID/);
+    assert.throws(() => encryptSetupRawTransaction("0x12", Buffer.alloc(32), Buffer.alloc(11)), /SETUP_ENCRYPTION_IV_INVALID/);
+    assert.throws(() => encryptSetupRawTransaction("not-hex", Buffer.alloc(32), Buffer.alloc(12)), /SETUP_RAW_TRANSACTION_INVALID/);
+    const encrypted = encryptSetupRawTransaction("0x12", Buffer.alloc(32, 7), Buffer.alloc(12, 9));
+    assert.throws(() => decryptSetupRawTransaction(encrypted, Buffer.alloc(31)), /SETUP_ENCRYPTION_KEY_INVALID/);
+    assert.throws(() => decryptSetupRawTransaction({ ...encrypted, hash: "bad" }, Buffer.alloc(32, 7)), /SETUP_OUTBOX_HASH_INVALID/);
+    assert.throws(() => decryptSetupRawTransaction({ ...encrypted, iv: "AA" }, Buffer.alloc(32, 7)), /SETUP_OUTBOX_DECRYPT_FAILED/);
+    assert.throws(() => decryptSetupRawTransaction({ ...encrypted, tag: "AA" }, Buffer.alloc(32, 7)), /SETUP_OUTBOX_DECRYPT_FAILED/);
   });
 });

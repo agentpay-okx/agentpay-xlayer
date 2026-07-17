@@ -11,6 +11,7 @@ import {
   MAINNET_WALLET_SETUP_TYPES,
 } from "@agentpay-ai/shared";
 import {
+  fetchSetupLogsInChunks,
   MAINNET_SETUP_USDC,
   verifySetupAccount,
   type SetupVerificationLog,
@@ -25,6 +26,7 @@ const hash = (digit: string) => `0x${digit.repeat(64)}`;
 const accountCode = `0x${"60".repeat(20)}`;
 const factoryInterface = new Interface([
   "event AccountDeployed(address indexed owner,address indexed account,bytes32 indexed salt,bytes32 authorizationHash)",
+  "event AccountReused(address indexed owner,address indexed account,bytes32 indexed authorizationHash)",
 ]);
 const accountInterface = new Interface([
   "event TokenAllowedUpdated(address indexed token,bool allowed)",
@@ -156,5 +158,184 @@ describe("mainnet setup account verifier", () => {
       }),
       /SETUP_ACCOUNT_CODE_MISMATCH/,
     );
+  });
+
+  it("rejects every malformed block, receipt, log response, and factory provenance variant", async () => {
+    const valid = {
+      reader: reader().value,
+      claim: claim(),
+      factoryDeploymentBlock: 1,
+      verificationBlockNumber: 305,
+    } as const;
+    await assert.rejects(
+      verifySetupAccount({ ...valid, factoryDeploymentBlock: -1 }),
+      /SETUP_FACTORY_BLOCK_INVALID/,
+    );
+    await assert.rejects(
+      verifySetupAccount({ ...valid, verificationBlockNumber: 0 }),
+      /SETUP_VERIFICATION_BLOCK_INVALID/,
+    );
+    for (const receipt of [
+      { status: 0, blockNumber: 100, transactionHash: hash("8") },
+      { status: 1, blockNumber: 306, transactionHash: hash("8") },
+      { status: 1, blockNumber: -1, transactionHash: hash("8") },
+      { status: 1, blockNumber: 100, transactionHash: "0x12" },
+    ]) {
+      await assert.rejects(verifySetupAccount({ ...valid, receipt }), /SETUP_RECEIPT_INVALID/);
+    }
+    await assert.rejects(
+      verifySetupAccount({
+        ...valid,
+        claim: Object.freeze({ ...claim(), transactionHash: hash("9") }),
+        receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
+      }),
+      /SETUP_RECEIPT_INVALID/,
+    );
+
+    await assert.rejects(
+      fetchSetupLogsInChunks({ getLogs: async () => [] }, factory, 2, 1),
+      /SETUP_LOG_RANGE_INVALID/,
+    );
+    await assert.rejects(
+      fetchSetupLogsInChunks({
+        getLogs: async () => [{
+          address: owner,
+          topics: [],
+          data: "0x",
+          blockNumber: 1,
+          transactionHash: hash("8"),
+        }],
+      }, factory, 1, 1),
+      /SETUP_LOG_RESPONSE_INVALID/,
+    );
+    await assert.rejects(
+      fetchSetupLogsInChunks({
+        getLogs: async () => [{
+          address: factory,
+          topics: [],
+          data: "0x",
+          blockNumber: 2,
+          transactionHash: hash("8"),
+        }],
+      }, factory, 1, 1),
+      /SETUP_LOG_RESPONSE_INVALID/,
+    );
+
+    const emptyFactoryReader = reader().value;
+    await assert.rejects(
+      verifySetupAccount({
+        ...valid,
+        reader: {
+          ...emptyFactoryReader,
+          getLogs: async (filter) => filter.address.toLowerCase() === factory.toLowerCase()
+            ? []
+            : emptyFactoryReader.getLogs(filter),
+        },
+      }),
+      /SETUP_FACTORY_EVENT_MISMATCH/,
+    );
+    const duplicateFactoryEvent = encodedLog(
+      factory,
+      factoryInterface,
+      "AccountDeployed",
+      [owner, predicted, claim().deploymentSalt, claim().authorizationHash],
+      101,
+    );
+    await assert.rejects(
+      verifySetupAccount({ ...valid, reader: reader([duplicateFactoryEvent]).value }),
+      /SETUP_FACTORY_EVENT_MISMATCH/,
+    );
+    await assert.rejects(
+      verifySetupAccount({
+        ...valid,
+        receipt: { status: 1, blockNumber: 101, transactionHash: hash("8") },
+      }),
+      /SETUP_FACTORY_EVENT_MISMATCH/,
+    );
+  });
+
+  it("rejects each unsafe immutable state and post-deployment account mutation", async () => {
+    const expectedDomain = TypedDataEncoder.hashDomain({
+      name: "AgentPay",
+      version: "1",
+      chainId: 196,
+      verifyingContract: predicted,
+    });
+    const unsafeStates = [
+      { owner: factory },
+      { executor: factory },
+      { executor: owner },
+      { paused: true },
+      { domainSeparator: hash("1") },
+      { allowedUsdt0: false },
+      { allowedUsdc: true },
+    ];
+    for (const state of unsafeStates) {
+      await assert.rejects(
+        verifySetupAccount({
+          reader: reader([], { domainSeparator: expectedDomain, ...state }).value,
+          claim: claim(),
+          factoryDeploymentBlock: 1,
+          verificationBlockNumber: 305,
+        }),
+        /SETUP_ACCOUNT_POLICY_MISMATCH/,
+      );
+    }
+
+    const unsafeLogs = [
+      encodedLog(predicted, accountInterface, "TokenAllowedUpdated", [MAINNET_SETUP_USDC, true], 150),
+      encodedLog(predicted, accountInterface, "TokenAllowedUpdated", [MAINNET_SETUP_USDT0, false], 150),
+      encodedLog(predicted, accountInterface, "RouteTargetAllowedUpdated", [factory, true], 150),
+      encodedLog(predicted, accountInterface, "ExecutorUpdated", [factory, executor], 150),
+      encodedLog(predicted, accountInterface, "ExecutorUpdated", [executor, factory], 150),
+      encodedLog(predicted, accountInterface, "AccountPaused", [], 150),
+    ];
+    for (const log of unsafeLogs) {
+      await assert.rejects(
+        verifySetupAccount({
+          reader: reader([log]).value,
+          claim: claim(),
+          factoryDeploymentBlock: 1,
+          verificationBlockNumber: 305,
+        }),
+        /SETUP_ACCOUNT_POLICY_MISMATCH/,
+      );
+    }
+
+    const benignLogs = [
+      encodedLog(predicted, accountInterface, "TokenAllowedUpdated", [MAINNET_SETUP_USDT0, true], 150),
+      encodedLog(predicted, accountInterface, "TokenAllowedUpdated", [MAINNET_SETUP_USDC, false], 151),
+      encodedLog(predicted, accountInterface, "RouteTargetAllowedUpdated", [factory, false], 152),
+      encodedLog(predicted, accountInterface, "ExecutorUpdated", [executor, executor], 153),
+      { address: predicted, topics: [hash("1")], data: "0x", blockNumber: 154, transactionHash: hash("8") },
+    ];
+    assert.equal((await verifySetupAccount({
+      reader: reader(benignLogs).value,
+      claim: claim(),
+      factoryDeploymentBlock: 1,
+      verificationBlockNumber: 305,
+    })).accountAddress, predicted);
+
+    const reused = encodedLog(
+      factory,
+      factoryInterface,
+      "AccountReused",
+      [owner, predicted, claim().authorizationHash],
+      100,
+    );
+    const reusedReader = reader().value;
+    const result = await verifySetupAccount({
+      reader: {
+        ...reusedReader,
+        getLogs: async (filter) => filter.address.toLowerCase() === factory.toLowerCase()
+          ? (filter.fromBlock <= reused.blockNumber && reused.blockNumber <= filter.toBlock ? [reused] : [])
+          : reusedReader.getLogs(filter),
+      },
+      claim: claim(),
+      factoryDeploymentBlock: 1,
+      verificationBlockNumber: 305,
+      receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
+    });
+    assert.equal(result.deploymentBlockNumber, 100);
   });
 });
