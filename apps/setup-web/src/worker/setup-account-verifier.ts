@@ -76,11 +76,13 @@ export async function verifySetupAccount(input: {
       || !/^0x[0-9a-fA-F]{64}$/.test(input.receipt.transactionHash)) throw new Error("SETUP_RECEIPT_INVALID");
   }
 
+  const factoryLogStart = input.receipt?.blockNumber ?? input.factoryDeploymentBlock;
+  const factoryLogEnd = input.receipt?.blockNumber ?? input.verificationBlockNumber;
   const [chainId, accountCode, state, factoryLogs] = await Promise.all([
     input.reader.getChainId(),
     input.reader.getCode(input.claim.predictedAccount),
     input.reader.getAccountState(input.claim.predictedAccount),
-    fetchSetupLogsInChunks(input.reader, input.claim.factoryAddress, input.factoryDeploymentBlock, input.verificationBlockNumber),
+    fetchSetupLogsInChunks(input.reader, input.claim.factoryAddress, factoryLogStart, factoryLogEnd),
   ]);
   if (chainId !== 196) throw new Error("SETUP_CHAIN_MISMATCH");
   if (accountCode === "0x" || keccak256(accountCode).toLowerCase() !== input.claim.accountRuntimeCodeHash.toLowerCase()) {
@@ -153,11 +155,10 @@ function findFactoryDeployment(
     if (receipt && log.transactionHash.toLowerCase() !== receipt.transactionHash.toLowerCase()) return false;
     try {
       const parsed = factoryInterface.parseLog({ topics: [...log.topics], data: log.data });
-      if (!parsed || !["AccountDeployed", "AccountReused"].includes(parsed.name)) return false;
-      if (!receipt && parsed.name !== "AccountDeployed") return false;
+      if (!parsed || parsed.name !== "AccountDeployed") return false;
       if (String(parsed.args.owner).toLowerCase() !== claim.ownerAddress.toLowerCase()
         || String(parsed.args.account).toLowerCase() !== claim.predictedAccount.toLowerCase()) return false;
-      if (parsed.name === "AccountDeployed" && String(parsed.args.salt).toLowerCase() !== claim.deploymentSalt.toLowerCase()) {
+      if (String(parsed.args.salt).toLowerCase() !== claim.deploymentSalt.toLowerCase()) {
         return false;
       }
       if (receipt && String(parsed.args.authorizationHash).toLowerCase() !== claim.authorizationHash.toLowerCase()) return false;

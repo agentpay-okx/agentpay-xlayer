@@ -85,7 +85,7 @@ function reader(extraLogs: readonly SetupVerificationLog[] = [], state: Partial<
     encodedLog(predicted, accountInterface, "TokenAllowedUpdated", [MAINNET_SETUP_USDT0, true], 100),
     ...extraLogs,
   ];
-  const calls: Array<{ fromBlock: number; toBlock: number }> = [];
+  const calls: Array<{ address: string; fromBlock: number; toBlock: number }> = [];
   const value: SetupAccountVerificationReader = {
     getChainId: async () => 196,
     getCode: async () => accountCode,
@@ -95,7 +95,7 @@ function reader(extraLogs: readonly SetupVerificationLog[] = [], state: Partial<
       allowedUsdt0: true, allowedUsdc: false, ...state,
     }),
     getLogs: async (filter) => {
-      calls.push({ fromBlock: filter.fromBlock, toBlock: filter.toBlock });
+      calls.push({ address: filter.address, fromBlock: filter.fromBlock, toBlock: filter.toBlock });
       assert.ok(filter.toBlock - filter.fromBlock <= 99);
       return logs.filter((log) => log.address.toLowerCase() === filter.address.toLowerCase()
         && log.blockNumber >= filter.fromBlock && log.blockNumber <= filter.toBlock);
@@ -116,7 +116,31 @@ describe("mainnet setup account verifier", () => {
       receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
     });
     assert.deepEqual(result, { accountAddress: predicted.toLowerCase(), deploymentBlockNumber: 100, verificationBlockNumber: 305 });
-    assert.ok(mock.calls.length >= 7);
+    assert.equal(mock.calls.length, 4);
+  });
+
+  it("scopes factory provenance to the successful receipt block", async () => {
+    const mock = reader();
+    await verifySetupAccount({
+      reader: mock.value,
+      claim: claim(),
+      factoryDeploymentBlock: 1,
+      verificationBlockNumber: 305,
+      receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
+    });
+
+    assert.deepEqual(
+      mock.calls.filter((call) => call.address.toLowerCase() === factory.toLowerCase()),
+      [{ address: factory, fromBlock: 100, toBlock: 100 }],
+    );
+    assert.deepEqual(
+      mock.calls.filter((call) => call.address.toLowerCase() === predicted.toLowerCase()),
+      [
+        { address: predicted, fromBlock: 100, toBlock: 199 },
+        { address: predicted, fromBlock: 200, toBlock: 299 },
+        { address: predicted, fromBlock: 300, toBlock: 305 },
+      ],
+    );
   });
 
   it("accepts an existing exact account without requiring a new transaction receipt", async () => {
@@ -323,19 +347,28 @@ describe("mainnet setup account verifier", () => {
       [owner, predicted, claim().authorizationHash],
       100,
     );
-    const reusedReader = reader().value;
-    const result = await verifySetupAccount({
-      reader: {
-        ...reusedReader,
-        getLogs: async (filter) => filter.address.toLowerCase() === factory.toLowerCase()
-          ? (filter.fromBlock <= reused.blockNumber && reused.blockNumber <= filter.toBlock ? [reused] : [])
-          : reusedReader.getLogs(filter),
-      },
-      claim: claim(),
-      factoryDeploymentBlock: 1,
-      verificationBlockNumber: 305,
-      receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
-    });
-    assert.equal(result.deploymentBlockNumber, 100);
+    const unsafeBeforeReuse = encodedLog(
+      predicted,
+      accountInterface,
+      "RouteTargetAllowedUpdated",
+      [factory, true],
+      50,
+    );
+    const reusedReader = reader([unsafeBeforeReuse]).value;
+    await assert.rejects(
+      verifySetupAccount({
+        reader: {
+          ...reusedReader,
+          getLogs: async (filter) => filter.address.toLowerCase() === factory.toLowerCase()
+            ? (filter.fromBlock <= reused.blockNumber && reused.blockNumber <= filter.toBlock ? [reused] : [])
+            : reusedReader.getLogs(filter),
+        },
+        claim: claim(),
+        factoryDeploymentBlock: 1,
+        verificationBlockNumber: 305,
+        receipt: { status: 1, blockNumber: 100, transactionHash: hash("8") },
+      }),
+      /SETUP_FACTORY_EVENT_MISMATCH/,
+    );
   });
 });
