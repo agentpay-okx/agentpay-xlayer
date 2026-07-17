@@ -23,6 +23,7 @@
     "test": "npm run test --workspaces --if-present && npm run test:scripts && npm run test:contracts",
     "test:e2e": "playwright test --config apps/setup-web/playwright.config.ts",
     "test:contracts": "cd contracts && forge test",
+    "test:db:setup": "node --test scripts/production-setup-postgres.test.mjs",
     "test:scripts": "node --test scripts/*.test.mjs && tsx --test \"scripts/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
